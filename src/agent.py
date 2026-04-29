@@ -65,26 +65,58 @@ _EXEC_URL_PATTERNS = [
 ]
 
 
+def _find_exec_url_in_dict(d: dict) -> str | None:
+    for key in _EXEC_URL_KEYS:
+        val = d.get(key)
+        if val and isinstance(val, str) and val.startswith("http"):
+            return val.rstrip(".,;")
+    return None
+
+
 def extract_exec_url(message: str) -> str | None:
-    # Step 1 — try JSON key lookup (terminal-bench sends structured JSON)
+    """
+    Find exec_url in a (possibly double-encoded) JSON message.
+
+    Terminal-bench sends a JSON-RPC envelope where:
+      params.message.parts[0].text = JSON string containing:
+        {"kind": "task", "exec_url": "http://...", "instruction": "..."}
+
+    We must parse outer JSON → navigate to parts[0].text → parse inner JSON.
+    """
     try:
-        data = json.loads(message)
-        if isinstance(data, dict):
-            for key in _EXEC_URL_KEYS:
-                val = data.get(key)
-                if val and isinstance(val, str) and val.startswith("http"):
-                    return val.rstrip(".,;")
-            # Also search one level deep (e.g. data["context"]["exec_url"])
-            for v in data.values():
-                if isinstance(v, dict):
-                    for key in _EXEC_URL_KEYS:
-                        val = v.get(key)
-                        if val and isinstance(val, str) and val.startswith("http"):
-                            return val.rstrip(".,;")
+        outer = json.loads(message)
+        if isinstance(outer, dict):
+            # Top-level check
+            found = _find_exec_url_in_dict(outer)
+            if found:
+                return found
+
+            # Navigate into JSON-RPC: params → message → parts → text
+            parts = (outer.get("params", {})
+                         .get("message", {})
+                         .get("parts", []))
+            for part in parts:
+                text = part.get("text", "")
+                if not text:
+                    continue
+                # Parse inner JSON (the actual task payload)
+                try:
+                    inner = json.loads(text)
+                    if isinstance(inner, dict):
+                        found = _find_exec_url_in_dict(inner)
+                        if found:
+                            return found
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                # Regex on raw inner text
+                for pattern in _EXEC_URL_PATTERNS:
+                    m = re.search(pattern, text, re.IGNORECASE)
+                    if m:
+                        return m.group(1).strip().rstrip(".,;")
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Step 2 — regex fallback on raw text
+    # Final fallback: regex on entire raw message
     for pattern in _EXEC_URL_PATTERNS:
         m = re.search(pattern, message, re.IGNORECASE)
         if m:
@@ -138,27 +170,33 @@ class TerminalAgent:
         logger.info("exec_url=%s", exec_url)
         exec_client = ExecClient(exec_url)
 
-        # Extract human-readable instruction for domain detection + planning
-        # terminal-bench sends {"kind":"task","instruction":"...","exec_url":"..."}
+        # Extract human-readable instruction for domain detection + planning.
+        # Terminal-bench: outer JSON-RPC → params.message.parts[0].text → inner JSON
+        # Inner JSON: {"kind":"task", "instruction":"...", "exec_url":"..."}
         instruction = task_message
         try:
-            data = json.loads(task_message)
-            if isinstance(data, dict):
-                # Try common instruction field names
-                for key in ("instruction", "task", "problem_statement", "description"):
-                    if key in data and isinstance(data[key], str):
-                        instruction = data[key]
-                        break
-                # If not found at top level, search params.message.parts
-                if instruction == task_message:
-                    parts = (data.get("params", {})
-                                 .get("message", {})
-                                 .get("parts", []))
-                    for part in parts:
-                        txt = part.get("text", "")
-                        if txt.strip():
-                            instruction = txt
-                            break
+            outer = json.loads(task_message)
+            if isinstance(outer, dict):
+                # Navigate to inner task JSON inside parts[0].text
+                parts = (outer.get("params", {})
+                             .get("message", {})
+                             .get("parts", []))
+                for part in parts:
+                    text = part.get("text", "")
+                    if not text:
+                        continue
+                    # Parse the inner JSON to get the instruction field
+                    try:
+                        inner = json.loads(text)
+                        if isinstance(inner, dict):
+                            for key in ("instruction", "task", "problem_statement", "description"):
+                                if key in inner and isinstance(inner[key], str):
+                                    instruction = inner[key]
+                                    break
+                    except (json.JSONDecodeError, ValueError):
+                        # parts[0].text is plain text — use it directly
+                        instruction = text
+                    break
         except (json.JSONDecodeError, ValueError):
             pass
 
