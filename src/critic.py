@@ -40,8 +40,8 @@ _INTERACTIVE_PATTERNS = [
      "interactive editor/pager — will hang without a TTY"),
     (r"\bread\b.*\$",
      "shell read builtin blocks waiting for stdin"),
-    (r"\bsudo\b.*(apt|dpkg|yum).*(?<!-y\b)$",
-     "package manager may prompt for confirmation — add -y flag"),
+    (r"\b(apt-get|apt)\b(?!.*\s-y)(?!.*-y\s).*\binstall\b",
+     "apt install without -y flag may prompt for confirmation"),
 ]
 
 _DESTRUCTIVE_PATTERNS = [

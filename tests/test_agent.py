@@ -295,7 +295,9 @@ class TestTaskMemory:
         m = TaskMemory()
         for i in range(MAX_PER_DOMAIN + 5):
             m.store("python", f"task {i}", [f"cmd {i}"], "ok", verified=True)
-        assert len(m.retrieve("python")) == MAX_PER_DOMAIN
+        # Check internal bucket (storage cap), not retrieve() which has its own MAX_INJECT default
+        internal = len(m._store.get("python", []))
+        assert internal == MAX_PER_DOMAIN
 
     def test_format_non_empty(self):
         from memory import TaskMemory
