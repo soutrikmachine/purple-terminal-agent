@@ -1,57 +1,42 @@
 {
-  manifest_version: "0.2.0",
-
-  // Declares what the user must provide at quick submit time.
-  // secret: true → AgentBeats renders a password-style input field.
-  config_schema: {
-    type: "object",
-    properties: {
-      openrouter_api_key: {
-        type: "string",
-        secret: true,
-        title: "OpenRouter API Key",
-        description: "Your OpenRouter API key (starts with sk-or-)",
-      },
+  "manifest_version": "0.1.0",
+  "program": {
+    "image": "rimodock/purple-terminal-agent:latest",
+    "entrypoint": "uv run --no-sync src/server.py --host 0.0.0.0 --port 9009",
+    "network": {
+      "endpoints": [
+        {
+          "name": "a2a",
+          "port": 9009
+        }
+      ]
     },
-    required: ["openrouter_api_key"],
-    additionalProperties: false,
+    "env": {
+      "PYTHONUNBUFFERED": "1",
+      "PORT": "9009",
+      "MAX_TURNS": "30",
+      "MODEL": "deepseek/deepseek-v4-flash",
+      "TASK_INDEX_PATH": "/app/data/task_index.json",
+      "OPENROUTER_API_KEY": "${config.openrouter_api_key}"
+    }
   },
-
-  // Slots wire config values into the container at runtime.
-  slots: {
-    openrouter_api_key: { kind: "config", config: "openrouter_api_key" },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "openrouter_api_key": {
+        "type": "string",
+        "title": "OpenRouter API Key",
+        "secret": true
+      }
+    }
   },
-
-  program: {
-    image: "docker.io/rimodock/purple-terminal-agent:latest",
-    entrypoint: "uv run --no-sync src/server.py --host 0.0.0.0 --port 9009",
-    env: {
-      PYTHONUNBUFFERED: "1",
-      PORT: "9009",
-      MAX_TURNS: "30",
-      MODEL: "deepseek/deepseek-v4-flash",
-      TASK_INDEX_PATH: "/app/data/task_index.json",
-      // Pulled from the slot declared above — not hardcoded
-      OPENROUTER_API_KEY: { slot: "openrouter_api_key" },
-    },
-    network: {
-      endpoints: [
-        { name: "a2a", port: 9009 },
-      ],
-    },
+  "provides": {
+    "a2a": {
+      "kind": "a2a",
+      "endpoint": "a2a"
+    }
   },
-
-  provides: {
-    a2a: { kind: "a2a", endpoint: "a2a" },
-  },
-
-  exports: {
-    a2a: "a2a",
-  },
-
-  metadata: {
-    name: "Purple Terminal Agent",
-    description: "Hierarchical Planner + Critic Pre-flight + RAG for Terminal Bench 2.0",
-    participant_roles: ["agent"],
-  },
+  "exports": {
+    "a2a": "a2a"
+  }
 }
