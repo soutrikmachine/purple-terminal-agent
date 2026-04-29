@@ -94,11 +94,22 @@ async def handle_task(request: Request):
     for k, v in request.headers.items():
         logger.info("  HEADER %s: %s", k, v)
 
-    # ── DIAGNOSTIC: log relevant env vars ────────────────────
-    logger.info("=== RELEVANT ENV VARS ===")
-    for k, v in os.environ.items():
-        if any(x in k.upper() for x in ["EXEC", "SHELL", "URL", "ENDPOINT"]):
-            logger.info("  ENV %s=%s", k, v)
+    # ── DIAGNOSTIC: query AMBER_DYNAMIC_CAPS_API_URL ─────────
+    amber_caps_url = os.environ.get("AMBER_DYNAMIC_CAPS_API_URL", "")
+    if amber_caps_url:
+        import urllib.request
+        for path in ["", "/", "/caps", "/capabilities", "/exec", "/slots"]:
+            try:
+                url = amber_caps_url.rstrip("/") + path
+                req = urllib.request.Request(url, headers={"Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    body_bytes = r.read()
+                    logger.info("=== AMBER CAPS API %s → %d ===", url, r.status)
+                    logger.info("  RESPONSE: %s", body_bytes.decode()[:1000])
+            except Exception as e:
+                logger.info("=== AMBER CAPS API %s → ERROR: %s ===", path, e)
+
+
 
     # ── DIAGNOSTIC: log FULL inner JSON untruncated ───────────
     try:
