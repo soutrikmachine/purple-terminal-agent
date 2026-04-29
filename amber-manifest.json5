@@ -31,7 +31,7 @@
     },
     "required": ["openrouter_api_key"]
   },
-  "requires": {
+  "slots": {
     "shell": {
       "kind": "terminal-bench-shell-v1"
     }
