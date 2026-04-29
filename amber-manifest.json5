@@ -19,7 +19,7 @@
 
   // Slots wire config values into the container at runtime.
   slots: {
-    openrouter_api_key: { config: "openrouter_api_key" },
+    openrouter_api_key: { kind: "config", config: "openrouter_api_key" },
   },
 
   program: {
