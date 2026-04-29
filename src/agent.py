@@ -160,52 +160,86 @@ class TerminalAgent:
     async def solve(self, task_message: str) -> str:
         """Entry point. Returns a summary of what was accomplished."""
 
-        # ── Phase 0: Setup ─────────────────────────────────
-        # The exec URL comes from the EXEC_BASE_URL environment variable,
-        # injected by Amber via the exec slot declared in amber-manifest.json5.
-        # The full exec endpoint is EXEC_BASE_URL/exec/{messageId}.
-        exec_base = os.environ.get("EXEC_BASE_URL", "").rstrip("/")
+        # ── Phase 0: Parse message ──────────────────────────
+        # Terminal-bench green agent sends:
+        #   outer JSON-RPC envelope
+        #     params.message.parts[0].text = inner JSON string:
+        #       {"kind":"task","protocol":"terminal-bench-shell-v1","instruction":"<full text>"}
+        #
+        # The "instruction" field contains BOTH the task description AND the exec URL
+        # embedded as plain text, e.g.:
+        #   "Fix the git repo.\n\nTo run commands POST to http://172.17.0.3:9010/exec/abc123"
+        #
+        # So the correct order is:
+        #   1. Parse outer JSON → inner JSON → extract "instruction" string
+        #   2. Regex-search the instruction string for the exec URL (primary source)
+        #   3. Check inner JSON for exec_url key (in case format changes)
+        #   4. Fall back to EXEC_BASE_URL env var + messageId (Amber slot injection)
 
-        # Extract messageId from the A2A envelope — this is the session token
-        message_id = ""
+        message_id  = ""
         instruction = task_message
+        inner_json: dict = {}
+
         try:
             outer = json.loads(task_message)
             if isinstance(outer, dict):
                 message_id = (outer.get("params", {})
                                    .get("message", {})
                                    .get("messageId", ""))
-                # Navigate to inner task JSON inside parts[0].text
                 parts = (outer.get("params", {})
                              .get("message", {})
                              .get("parts", []))
                 for part in parts:
-                    text = part.get("text", "")
-                    if not text:
+                    raw_text = part.get("text", "")
+                    if not raw_text:
                         continue
                     try:
-                        inner = json.loads(text)
-                        if isinstance(inner, dict):
+                        inner_json = json.loads(raw_text)
+                        if isinstance(inner_json, dict):
+                            # instruction field contains the full prompt incl. exec URL
                             for key in ("instruction", "task", "problem_statement", "description"):
-                                if key in inner and isinstance(inner[key], str):
-                                    instruction = inner[key]
+                                if key in inner_json and isinstance(inner_json[key], str):
+                                    instruction = inner_json[key]
                                     break
+                            else:
+                                instruction = raw_text
                     except (json.JSONDecodeError, ValueError):
-                        instruction = text
+                        instruction = raw_text
                     break
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Build the full exec URL
-        if exec_base and message_id:
-            exec_url = f"{exec_base}/exec/{message_id}"
-        elif exec_base:
-            exec_url = f"{exec_base}/exec/session"
-        else:
-            logger.error("EXEC_BASE_URL not set — exec slot not wired in amber-manifest.json5")
-            return "ERROR: EXEC_BASE_URL environment variable not set. Check amber-manifest.json5 exec slot."
+        logger.info("message_id=%s  instruction_len=%d", message_id, len(instruction))
+        logger.info("FULL INSTRUCTION:\n%s", instruction)  # ← full, untruncated
 
-        logger.info("exec_base=%s  message_id=%s  exec_url=%s", exec_base, message_id, exec_url)
+        # ── Locate exec URL ────────────────────────────────
+        exec_url: str = ""
+
+        # Source 1: regex the instruction text (green embeds URL as plain text)
+        for pattern in _EXEC_URL_PATTERNS:
+            m = re.search(pattern, instruction, re.IGNORECASE)
+            if m:
+                exec_url = m.group(1).strip().rstrip(".,;)")
+                logger.info("exec_url from instruction regex: %s", exec_url)
+                break
+
+        # Source 2: explicit JSON field in inner payload
+        if not exec_url:
+            exec_url = _find_exec_url_in_dict(inner_json) or ""
+            if exec_url:
+                logger.info("exec_url from inner JSON field: %s", exec_url)
+
+        # Source 3: EXEC_BASE_URL env var (Amber exec slot injection)
+        if not exec_url:
+            exec_base = os.environ.get("EXEC_BASE_URL", "").rstrip("/")
+            if exec_base:
+                exec_url = f"{exec_base}/exec/{message_id}" if message_id else f"{exec_base}/exec/session"
+                logger.info("exec_url from EXEC_BASE_URL env: %s", exec_url)
+
+        if not exec_url:
+            logger.error("No exec URL found. message_id=%s instruction=%.500s", message_id, instruction)
+            return "ERROR: Could not find exec URL. Check logs for full instruction text."
+
         exec_client = ExecClient(exec_url)
 
         logger.info("instruction preview: %.300s", instruction)
