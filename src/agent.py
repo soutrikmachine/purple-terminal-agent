@@ -27,6 +27,7 @@ Mathematical workflow:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -49,6 +50,12 @@ VERIFY_RETRY_LIMIT     = 2   # max times to re-enter executor after verify fails
 
 # ── Exec URL extraction ────────────────────────────────────
 
+_EXEC_URL_KEYS = [
+    "exec_url", "execUrl", "shell_url", "shellUrl",
+    "exec_endpoint", "execEndpoint", "shell_endpoint",
+    "base_url", "baseUrl",
+]
+
 _EXEC_URL_PATTERNS = [
     r"exec[_\s-]?url[:\s]+(\S+)",
     r"POST\s+(https?://\S+/exec/\S+)",
@@ -59,6 +66,25 @@ _EXEC_URL_PATTERNS = [
 
 
 def extract_exec_url(message: str) -> str | None:
+    # Step 1 — try JSON key lookup (terminal-bench sends structured JSON)
+    try:
+        data = json.loads(message)
+        if isinstance(data, dict):
+            for key in _EXEC_URL_KEYS:
+                val = data.get(key)
+                if val and isinstance(val, str) and val.startswith("http"):
+                    return val.rstrip(".,;")
+            # Also search one level deep (e.g. data["context"]["exec_url"])
+            for v in data.values():
+                if isinstance(v, dict):
+                    for key in _EXEC_URL_KEYS:
+                        val = v.get(key)
+                        if val and isinstance(val, str) and val.startswith("http"):
+                            return val.rstrip(".,;")
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Step 2 — regex fallback on raw text
     for pattern in _EXEC_URL_PATTERNS:
         m = re.search(pattern, message, re.IGNORECASE)
         if m:
@@ -103,6 +129,7 @@ class TerminalAgent:
         """Entry point. Returns a summary of what was accomplished."""
 
         # ── Phase 0: Setup ─────────────────────────────────
+        # Extract exec_url from full JSON body (JSON key lookup + regex fallback)
         exec_url = extract_exec_url(task_message)
         if not exec_url:
             logger.error("No exec URL in message: %s", task_message[:300])
@@ -111,25 +138,49 @@ class TerminalAgent:
         logger.info("exec_url=%s", exec_url)
         exec_client = ExecClient(exec_url)
 
-        domain_result = detect_domains(task_message)
+        # Extract human-readable instruction for domain detection + planning
+        # terminal-bench sends {"kind":"task","instruction":"...","exec_url":"..."}
+        instruction = task_message
+        try:
+            data = json.loads(task_message)
+            if isinstance(data, dict):
+                # Try common instruction field names
+                for key in ("instruction", "task", "problem_statement", "description"):
+                    if key in data and isinstance(data[key], str):
+                        instruction = data[key]
+                        break
+                # If not found at top level, search params.message.parts
+                if instruction == task_message:
+                    parts = (data.get("params", {})
+                                 .get("message", {})
+                                 .get("parts", []))
+                    for part in parts:
+                        txt = part.get("text", "")
+                        if txt.strip():
+                            instruction = txt
+                            break
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        logger.info("instruction preview: %.300s", instruction)
+
+        domain_result = detect_domains(instruction)
         logger.info(
-            "Domains detected: primary=%s secondaries=%s scores=%s",
+            "Domains detected: primary=%s secondaries=%s",
             domain_result.primary,
             domain_result.secondaries,
-            domain_result.scores,
         )
 
-        rag_hints   = query_rag(task_message, top_k=2)
+        rag_hints   = query_rag(instruction, top_k=2)
         memory_ctx  = self._memory.format_for_injection(domain_result.primary)
         system_prompt = build_system_prompt(domain_result, rag_hints, MAX_TURNS)
 
-        # Inject verified memory patterns into system prompt
         if memory_ctx:
             system_prompt = system_prompt + "\n\n" + memory_ctx
 
         try:
             result = await self._run_pipeline(
-                task_message=task_message,
+                task_message=instruction,
                 exec_client=exec_client,
                 domain_result=domain_result,
                 system_prompt=system_prompt,

@@ -37,7 +37,6 @@ We respond with:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -68,8 +67,15 @@ logger.info("OpenRouter key: %s", "SET ✓" if os.getenv("OPENROUTER_API_KEY") e
 logger.info("=" * 60)
 
 # ── FastAPI app ────────────────────────────────────────────────────────────────
-app   = FastAPI(title="Purple Terminal Agent")
-_agent = TerminalAgent()
+app    = FastAPI(title="Purple Terminal Agent")
+_agent: TerminalAgent | None = None
+
+
+def get_agent() -> TerminalAgent:
+    global _agent
+    if _agent is None:
+        _agent = TerminalAgent()
+    return _agent
 
 AGENT_CARD = {
     "name": "Purple Terminal Agent",
@@ -132,14 +138,15 @@ async def handle_task(request: Request):
     if not context_id:
         context_id = str(uuid.uuid4())
 
+    # Pass the FULL raw body as JSON string so agent.py can find exec_url
+    # regardless of where it sits in the message structure.
+    full_message = json.dumps(body)
+
     logger.info("context_id=%s  task_len=%d  preview=%.200s",
                 context_id[:20], len(task_text), task_text)
 
-    # Run agent (blocking → thread so FastAPI event loop stays free)
-    loop = asyncio.get_event_loop()
-    result_text = await loop.run_in_executor(
-        None, lambda: asyncio.run(_agent.solve(task_text))
-    )
+    # Run agent directly — FastAPI is async so we can await the coroutine
+    result_text = await get_agent().solve(full_message)
 
     logger.info("Task completed: len=%d preview=%.200s", len(result_text), result_text)
 
