@@ -28,7 +28,8 @@
         "title": "OpenRouter API Key",
         "secret": true
       }
-    }
+    },
+    "required": ["openrouter_api_key"]
   },
   "provides": {
     "a2a": {
