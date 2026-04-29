@@ -31,11 +31,6 @@
     },
     "required": ["openrouter_api_key"]
   },
-  "slots": {
-    "shell": {
-      "kind": "http"
-    }
-  },
   "provides": {
     "a2a": {
       "kind": "a2a",

@@ -31,7 +31,6 @@ import json
 import logging
 import os
 import re
-import urllib.request
 
 from critic import preflight
 from executor import ExecClient, ExecResult
@@ -41,7 +40,6 @@ from planner import format_plan_for_executor, plan
 from rag import query_rag
 from specialist import DomainResult, build_system_prompt, detect_domains
 from verifier import self_verify
-
 
 logger = logging.getLogger(__name__)
 
@@ -163,52 +161,20 @@ class TerminalAgent:
         """Entry point. Returns a summary of what was accomplished."""
 
         # ── Phase 0: Setup ─────────────────────────────────
-        # Extract exec_url from full JSON body (JSON key lookup + regex fallback)
-        exec_url = extract_exec_url(task_message)
-        # 2. TB 2.0/Amber Discovery: Check incoming JSON-RPC capabilities list
-        if not exec_url:
-            try:
-                body = json.loads(task_message)
-                # Terminal Bench often passes capabilities in the params block
-                caps_list = body.get("params", {}).get("capabilities", [])
-                for cap in caps_list:
-                    if "shell" in cap.get("moniker", "").lower() or cap.get("kind") == "http":
-                       exec_url = cap.get("uri")
-                       break
-            except Exception:
-                pass
+        # The exec URL comes from the EXEC_BASE_URL environment variable,
+        # injected by Amber via the exec slot declared in amber-manifest.json5.
+        # The full exec endpoint is EXEC_BASE_URL/exec/{messageId}.
+        exec_base = os.environ.get("EXEC_BASE_URL", "").rstrip("/")
 
-        # 3. Sidecar Discovery: Query the Amber Capabilities API
-        if not exec_url:
-            amber_caps_url = os.environ.get("AMBER_DYNAMIC_CAPS_API_URL")
-            if amber_caps_url:
-                try:
-                    url = amber_caps_url.rstrip("/") + "/caps"
-                    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-                    with urllib.request.urlopen(req, timeout=5) as r:
-                        data = json.loads(r.read().decode())
-                        for cap in data.get("capabilities", []):
-                            # Look for anything named 'shell' or typed as 'http'
-                            if cap.get("moniker") == "shell" or cap.get("kind") == "http":
-                                exec_url = cap.get("uri")
-                                break
-                except Exception as e:
-                    logger.error("Amber API query failed: %s", e)
-
-        if not exec_url:
-            logger.error("No exec URL found in message, params, or Amber API")
-            return "ERROR: Could not find exec URL in task message."
-
-        logger.info("Successfully discovered exec_url=%s", exec_url)
-        exec_client = ExecClient(exec_url)
-
-        # Extract human-readable instruction for domain detection + planning.
-        # Terminal-bench: outer JSON-RPC → params.message.parts[0].text → inner JSON
-        # Inner JSON: {"kind":"task", "instruction":"...", "exec_url":"..."}
+        # Extract messageId from the A2A envelope — this is the session token
+        message_id = ""
         instruction = task_message
         try:
             outer = json.loads(task_message)
             if isinstance(outer, dict):
+                message_id = (outer.get("params", {})
+                                   .get("message", {})
+                                   .get("messageId", ""))
                 # Navigate to inner task JSON inside parts[0].text
                 parts = (outer.get("params", {})
                              .get("message", {})
@@ -217,7 +183,6 @@ class TerminalAgent:
                     text = part.get("text", "")
                     if not text:
                         continue
-                    # Parse the inner JSON to get the instruction field
                     try:
                         inner = json.loads(text)
                         if isinstance(inner, dict):
@@ -226,11 +191,22 @@ class TerminalAgent:
                                     instruction = inner[key]
                                     break
                     except (json.JSONDecodeError, ValueError):
-                        # parts[0].text is plain text — use it directly
                         instruction = text
                     break
         except (json.JSONDecodeError, ValueError):
             pass
+
+        # Build the full exec URL
+        if exec_base and message_id:
+            exec_url = f"{exec_base}/exec/{message_id}"
+        elif exec_base:
+            exec_url = f"{exec_base}/exec/session"
+        else:
+            logger.error("EXEC_BASE_URL not set — exec slot not wired in amber-manifest.json5")
+            return "ERROR: EXEC_BASE_URL environment variable not set. Check amber-manifest.json5 exec slot."
+
+        logger.info("exec_base=%s  message_id=%s  exec_url=%s", exec_base, message_id, exec_url)
+        exec_client = ExecClient(exec_url)
 
         logger.info("instruction preview: %.300s", instruction)
 
