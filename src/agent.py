@@ -164,6 +164,23 @@ class TerminalAgent:
         # Extract exec_url from full JSON body (JSON key lookup + regex fallback)
         exec_url = extract_exec_url(task_message)
         if not exec_url:
+            amber_caps_url = os.environ.get("AMBER_DYNAMIC_CAPS_API_URL")
+            if amber_caps_url:
+                try:
+                    # Query the /caps endpoint to find the shell capability
+                    url = amber_caps_url.rstrip("/") + "/caps"
+                    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        caps = json.loads(r.read().decode())
+                        # Look for the capability typed as 'terminal-bench-shell-v1'
+                        for cap in caps.get("capabilities", []):
+                            if cap.get("kind") == "terminal-bench-shell-v1":
+                                exec_url = cap.get("uri")
+                                break
+                except Exception as e:
+                    logger.error("Failed to discover exec URL via Amber API: %s", e)
+
+        if not exec_url:
             logger.error("No exec URL in message: %s", task_message[:300])
             return "ERROR: Could not find exec URL in task message."
 
