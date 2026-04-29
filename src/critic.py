@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 # Fast local pre-check for obviously problematic patterns
 # These are caught without an LLM call — saves latency and cost
 _INTERACTIVE_PATTERNS = [
-_INTERACTIVE_PATTERNS = [
     # GIT_SEQUENCE_EDITOR may appear before or after "git rebase -i" — check whole string
     (r"^(?!.*GIT_SEQUENCE_EDITOR)(?!.*GIT_EDITOR).*\bgit rebase -i\b",
      "git rebase -i opens $EDITOR interactively — set GIT_SEQUENCE_EDITOR first"),

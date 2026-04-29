@@ -13,19 +13,21 @@ WORKDIR /app
 
 # ── Install Python dependencies ─────────────────────────────
 COPY pyproject.toml ./
-# Generate lockfile if not present, then sync
-RUN uv sync --no-dev || true
+# uv sync creates .venv and installs all deps from pyproject.toml
+RUN uv sync --no-dev
 
 # ── Build-time: construct task RAG index ────────────────────
 # Clone the public terminal-bench-2 repo and extract task metadata.
-# No API key needed — public repo.
-# Gracefully writes an empty index if clone fails (RAG disabled).
+# Uses python3 from the .venv uv just created.
+# Non-fatal: if clone fails (network timeout, repo renamed), we write
+# an empty index and the agent starts with RAG disabled — no crash.
 COPY scripts/ ./scripts/
 RUN mkdir -p /app/data && \
-    uv run python scripts/build_task_index.py \
+    uv run python3 scripts/build_task_index.py \
         --repo https://github.com/laude-institute/terminal-bench-2 \
-        --output /app/data/task_index.json && \
-    echo "Task index built: $(python3 -c \"import json; d=json.load(open('/app/data/task_index.json')); print(d['count'])\" 2>/dev/null || echo '0') tasks"
+        --output /app/data/task_index.json \
+    || (echo "Warning: RAG index build failed — starting with empty index" && \
+        echo '{"tasks": [], "count": 0}' > /app/data/task_index.json)
 
 # ── Copy source ─────────────────────────────────────────────
 COPY src/ ./src/

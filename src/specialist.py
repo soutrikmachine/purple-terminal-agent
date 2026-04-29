@@ -405,7 +405,7 @@ _FULL["text"] = """
 - `sed -i` on Linux works; on macOS requires `sed -i ''` — we're in containers, Linux only.
 - CSV with quoted commas: `cut -d,` fails. Use Python csv module or awk with FPAT.
 - YAML parsing: tabs are invalid in YAML — use spaces only.
-- `grep -P` for Perl regex; plain `grep` doesn't support `\d`, `\w`, etc.
+- `grep -P` for Perl regex; plain `grep` doesn't support `\\d`, `\\w`, etc.
 
 ### Reasoning Anchors
 - Have I looked at actual file contents before writing a transform?
@@ -424,7 +424,7 @@ Command: grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}' logfile.log 
 _SHORT["text"] = """
 ### Text Pitfalls (secondary domain awareness)
 - Always inspect actual file contents before writing any transform.
-- `grep -P` for Perl regex; plain grep doesn't support `\d`, `\w`.
+- `grep -P` for Perl regex; plain grep doesn't support `\\d`, `\\w`.
 - CSV with quoted commas breaks simple `cut -d,` — use Python or awk FPAT.
 """
 
