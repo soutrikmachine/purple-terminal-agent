@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import re
+import urllib.request
 
 from critic import preflight
 from executor import ExecClient, ExecResult
@@ -40,6 +41,7 @@ from planner import format_plan_for_executor, plan
 from rag import query_rag
 from specialist import DomainResult, build_system_prompt, detect_domains
 from verifier import self_verify
+
 
 logger = logging.getLogger(__name__)
 
