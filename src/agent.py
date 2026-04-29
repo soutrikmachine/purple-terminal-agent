@@ -165,28 +165,41 @@ class TerminalAgent:
         # ── Phase 0: Setup ─────────────────────────────────
         # Extract exec_url from full JSON body (JSON key lookup + regex fallback)
         exec_url = extract_exec_url(task_message)
+        # 2. TB 2.0/Amber Discovery: Check incoming JSON-RPC capabilities list
+        if not exec_url:
+            try:
+                body = json.loads(task_message)
+                # Terminal Bench often passes capabilities in the params block
+                caps_list = body.get("params", {}).get("capabilities", [])
+                for cap in caps_list:
+                    if "shell" in cap.get("moniker", "").lower() or cap.get("kind") == "http":
+                       exec_url = cap.get("uri")
+                       break
+            except Exception:
+                pass
+
+        # 3. Sidecar Discovery: Query the Amber Capabilities API
         if not exec_url:
             amber_caps_url = os.environ.get("AMBER_DYNAMIC_CAPS_API_URL")
             if amber_caps_url:
                 try:
-                    # Query the /caps endpoint to find the shell capability
                     url = amber_caps_url.rstrip("/") + "/caps"
                     req = urllib.request.Request(url, headers={"Accept": "application/json"})
                     with urllib.request.urlopen(req, timeout=5) as r:
-                        caps = json.loads(r.read().decode())
-                        # Look for the capability typed as 'terminal-bench-shell-v1'
-                        for cap in caps.get("capabilities", []):
-                            if cap.get("kind") == "terminal-bench-shell-v1":
+                        data = json.loads(r.read().decode())
+                        for cap in data.get("capabilities", []):
+                            # Look for anything named 'shell' or typed as 'http'
+                            if cap.get("moniker") == "shell" or cap.get("kind") == "http":
                                 exec_url = cap.get("uri")
                                 break
                 except Exception as e:
-                    logger.error("Failed to discover exec URL via Amber API: %s", e)
+                    logger.error("Amber API query failed: %s", e)
 
         if not exec_url:
-            logger.error("No exec URL in message: %s", task_message[:300])
+            logger.error("No exec URL found in message, params, or Amber API")
             return "ERROR: Could not find exec URL in task message."
 
-        logger.info("exec_url=%s", exec_url)
+        logger.info("Successfully discovered exec_url=%s", exec_url)
         exec_client = ExecClient(exec_url)
 
         # Extract human-readable instruction for domain detection + planning.

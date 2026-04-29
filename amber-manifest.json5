@@ -33,7 +33,7 @@
   },
   "slots": {
     "shell": {
-      "kind": "terminal-bench-shell-v1"
+      "kind": "http"
     }
   },
   "provides": {
