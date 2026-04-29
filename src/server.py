@@ -1,143 +1,232 @@
 """
-A2A server — receives task messages from the Terminal Bench green agent
-and dispatches to the TerminalAgent pipeline.
+Purple Terminal Agent — A2A server
+===================================
+FastAPI + JSON-RPC 2.0, matching the exact format used by purple-coding-agent.
 
-Endpoints:
-  GET  /.well-known/agent.json  → AgentCard
-  GET  /health                  → health check
-  POST /                        → A2A task handler
+Green agent sends JSON-RPC 2.0 envelope:
+  {
+    "jsonrpc": "2.0",
+    "id": "...",
+    "method": "message/send",
+    "params": {
+      "message": {
+        "contextId": "...",
+        "parts": [{"kind": "text", "text": "Task: fix-git. exec_url: http://..."}]
+      }
+    }
+  }
+
+We respond with:
+  {
+    "jsonrpc": "2.0",
+    "id": "...",
+    "result": {
+      "id": "<task_id>",
+      "contextId": "...",
+      "status": {"state": "completed"},
+      "artifacts": [
+        {
+          "artifactId": "...",
+          "name": "result",
+          "parts": [{"kind": "text", "text": "<agent output>"}]
+        }
+      ]
+    }
+  }
 """
 
 from __future__ import annotations
 
-import argparse
+import asyncio
+import json
 import logging
 import os
 import sys
 import uuid
+from typing import Any
 
 import uvicorn
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarlette
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import (
-    AgentCapabilities,
-    AgentCard,
-    AgentSkill,
-    Message,
-    Role,
-    TextPart,
-)
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.routing import Route
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from agent import TerminalAgent
 
+# ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     stream=sys.stdout,
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("purple_terminal_agent")
 
-PORT = int(os.environ.get("PORT", "9009"))
+PORT = int(os.getenv("PORT", "9009"))
 
-AGENT_CARD = AgentCard(
-    name="Purple Terminal Agent",
-    description=(
+logger.info("=" * 60)
+logger.info("Purple Terminal Agent  port=%d", PORT)
+logger.info("Model: %s", os.getenv("MODEL", "deepseek/deepseek-v4-flash"))
+logger.info("OpenRouter key: %s", "SET ✓" if os.getenv("OPENROUTER_API_KEY") else "MISSING ✗")
+logger.info("=" * 60)
+
+# ── FastAPI app ────────────────────────────────────────────────────────────────
+app   = FastAPI(title="Purple Terminal Agent")
+_agent = TerminalAgent()
+
+AGENT_CARD = {
+    "name": "Purple Terminal Agent",
+    "description": (
         "Hierarchical Planner + Critic Pre-flight + RAG terminal agent "
-        "for Terminal Bench 2.0. Decomposes tasks into sub-goals, "
-        "pre-flights every command through a domain-aware critic, "
-        "and self-verifies before declaring completion."
+        "for Terminal Bench 2.0. Solves hard realistic CLI tasks via "
+        "hierarchical planning, domain-aware critic pre-flight, and "
+        "build-time TF-IDF RAG."
     ),
-    url=f"http://localhost:{PORT}/",
-    version="0.2.0",
-    capabilities=AgentCapabilities(streaming=False),
-    skills=[
-        AgentSkill(
-            id="terminal-task",
-            name="Terminal Task Solver",
-            description="Solves hard realistic terminal tasks via hierarchical planning and multi-turn bash execution.",
-            tags=["terminal", "bash", "coding", "system-admin", "git", "docker"],
-        )
+    "url": f"http://localhost:{PORT}/",
+    "version": "0.2.0",
+    "capabilities": {
+        "streaming": False,
+        "pushNotifications": False,
+        "stateTransitionHistory": False,
+    },
+    "defaultInputModes": ["application/json"],
+    "defaultOutputModes": ["application/json"],
+    "skills": [
+        {
+            "id": "terminal-task",
+            "name": "Terminal Task Solver",
+            "description": (
+                "Solves hard realistic terminal tasks via hierarchical "
+                "planning and multi-turn bash execution."
+            ),
+            "tags": ["terminal", "bash", "coding", "system-admin", "git", "docker"],
+        }
     ],
-    default_input_modes=["text"],
-    default_output_modes=["text"],
-)
+}
 
 
-class PurpleAgentExecutor(AgentExecutor):
-
-    def __init__(self):
-        self._agent = TerminalAgent()
-
-    async def execute(self, context: RequestContext, event_queue) -> None:
-        task_text = _extract_text(context.message)
-        logger.info(
-            "Task received (id=%s, len=%d): %.200s",
-            context.task_id, len(task_text), task_text,
-        )
-        try:
-            result = await self._agent.solve(task_text)
-            await event_queue.enqueue_event(_make_message(result))
-        except Exception as e:
-            logger.exception("Agent execution error: %s", e)
-            await event_queue.enqueue_event(
-                _make_message(f"Agent error: {type(e).__name__}: {e}")
-            )
-
-    async def cancel(self, context: RequestContext, event_queue) -> None:
-        logger.info("Task cancelled: %s", context.task_id)
+@app.get("/.well-known/agent-card.json")
+async def agent_card():
+    return JSONResponse(content=AGENT_CARD)
 
 
-def _extract_text(message: Message | None) -> str:
-    if not message:
-        return ""
-    parts = getattr(message, "parts", None) or []
-    texts = []
-    for part in parts:
-        if isinstance(part, TextPart):
-            texts.append(part.text)
-        elif hasattr(part, "text"):
-            texts.append(str(part.text))
-        elif isinstance(part, dict):
-            texts.append(part.get("text", ""))
-    return "\n".join(t for t in texts if t).strip()
+@app.get("/.well-known/agent.json")
+async def agent_card_compat():
+    return JSONResponse(content=AGENT_CARD)
 
 
-def _make_message(text: str) -> Message:
-    return Message(
-        message_id=str(uuid.uuid4()),
-        role=Role.agent,
-        parts=[TextPart(text=text)],
+@app.get("/health")
+async def health():
+    return {"status": "ok", "agent": "purple-terminal-agent", "version": "0.2.0"}
+
+
+@app.post("/")
+async def handle_task(request: Request):
+    body = await request.json()
+
+    jsonrpc_id = body.get("id", str(uuid.uuid4()))
+    task_id    = str(uuid.uuid4())
+    artifact_id = str(uuid.uuid4())
+
+    logger.info("─" * 50)
+    logger.info("Request id=%s method=%s", jsonrpc_id, body.get("method"))
+
+    task_text, context_id = _extract_task_and_context(body)
+    if not context_id:
+        context_id = str(uuid.uuid4())
+
+    logger.info("context_id=%s  task_len=%d  preview=%.200s",
+                context_id[:20], len(task_text), task_text)
+
+    # Run agent (blocking → thread so FastAPI event loop stays free)
+    loop = asyncio.get_event_loop()
+    result_text = await loop.run_in_executor(
+        None, lambda: asyncio.run(_agent.solve(task_text))
     )
 
+    logger.info("Task completed: len=%d preview=%.200s", len(result_text), result_text)
 
-async def health(request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "agent": "purple-terminal-agent", "version": "0.2.0"})
-
-
-def build_app():
-    executor  = PurpleAgentExecutor()
-    store     = InMemoryTaskStore()
-    handler   = DefaultRequestHandler(agent_executor=executor, task_store=store)
-    app       = A2AStarlette(agent_card=AGENT_CARD, http_handler=handler)
-    app.routes.append(Route("/health", health))
-    return app
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=PORT)
-    parser.add_argument("--log-level", default="info")
-    args = parser.parse_args()
-
-    logger.info("Starting Purple Terminal Agent on %s:%d", args.host, args.port)
-    uvicorn.run(build_app(), host=args.host, port=args.port, log_level=args.log_level)
+    return JSONResponse(content={
+        "jsonrpc": "2.0",
+        "id": jsonrpc_id,
+        "result": {
+            "id": task_id,
+            "contextId": context_id,
+            "status": {"state": "completed"},
+            "artifacts": [
+                {
+                    "artifactId": artifact_id,
+                    "name": "result",
+                    "parts": [{"kind": "text", "text": result_text}],
+                }
+            ],
+        },
+    })
 
 
+# ── Message extraction — exact same pattern as purple-coding-agent ─────────────
+
+def _extract_task_and_context(body: dict) -> tuple[str, str]:
+    """
+    Parse the JSON-RPC 2.0 envelope the green agent sends.
+    Returns (task_text, context_id).
+    """
+    context_id = ""
+
+    # Direct task text at top level (fallback)
+    if "task" in body and isinstance(body["task"], str):
+        return body["task"], context_id
+
+    try:
+        params     = body.get("params", {})
+        message    = params.get("message", {})
+        context_id = message.get("contextId", "") or params.get("contextId", "")
+
+        parts = message.get("parts", [])
+        logger.info("Parts: %d  contextId=%s",
+                    len(parts), context_id[:20] if context_id else "none")
+
+        for i, part in enumerate(parts):
+            kind = part.get("kind") or part.get("type", "")
+            text = part.get("text", "")
+            logger.info("Part[%d] kind=%s len=%d preview=%.150s",
+                        i, kind, len(text), text)
+
+            if kind == "text" and text.strip():
+                return text.strip(), context_id
+
+            if kind == "data":
+                data = part.get("data", {})
+                if isinstance(data, dict):
+                    return json.dumps(data), context_id
+
+    except Exception as e:
+        logger.error("Extraction error: %s", e)
+
+    # Deep search fallback
+    found = _deep_find(body, "text")
+    if found:
+        return found, context_id
+
+    logger.warning("No task text found. Body keys: %s", list(body.keys()))
+    return json.dumps(body), context_id
+
+
+def _deep_find(obj: Any, key: str, depth: int = 0) -> str:
+    if depth > 6:
+        return ""
+    if isinstance(obj, dict):
+        if key in obj and isinstance(obj[key], str) and obj[key].strip():
+            return obj[key]
+        for v in obj.values():
+            r = _deep_find(v, key, depth + 1)
+            if r:
+                return r
+    elif isinstance(obj, list):
+        for item in obj:
+            r = _deep_find(item, key, depth + 1)
+            if r:
+                return r
+    return ""
+
+
+# ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    main()
+    uvicorn.run("server:app", host="0.0.0.0", port=PORT, log_level="info")
