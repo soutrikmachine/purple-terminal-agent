@@ -1,0 +1,45 @@
+{
+  manifest_version: "0.2.0",
+
+  config_schema: {
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  },
+
+  slots: {},
+
+  program: {
+    image: "docker.io/rimodock/purple-terminal-agent:latest",
+    entrypoint: "uv run --no-sync src/server.py --host 0.0.0.0 --port 9009",
+    env: {
+      PYTHONUNBUFFERED: "1",
+      PORT: "9009",
+      MAX_TURNS: "30",
+      MODEL: "deepseek/deepseek-v4-flash",
+      TASK_INDEX_PATH: "/app/data/task_index.json",
+      // OpenRouter API key — injected as secret at runtime by AgentBeats
+      OPENROUTER_API_KEY: { secret: "OPENROUTER_API_KEY" },
+    },
+    network: {
+      endpoints: [
+        { name: "a2a", port: 9009 },
+      ],
+    },
+  },
+
+  provides: {
+    a2a: { kind: "a2a", endpoint: "a2a" },
+  },
+
+  exports: {
+    a2a: "a2a",
+  },
+
+  metadata: {
+    name: "Purple Terminal Agent",
+    description: "Hierarchical Planner + Critic Pre-flight + RAG for Terminal Bench 2.0",
+    participant_roles: ["agent"],
+  },
+}
