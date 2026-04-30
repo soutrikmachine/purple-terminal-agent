@@ -309,6 +309,7 @@ class AgentSession:
         return json.dumps({"kind": "final", "output": done_content or "Task completed."})
 
     def _build_observation(self, result_text: str, exit_code: int, timed_out: bool, current_sg: dict) -> str:
+        remaining = MAX_TURNS - self.turn
         lines = [
             f"Output:\n```\n{result_text}\n```",
             f"Exit code: {exit_code}",
@@ -318,7 +319,17 @@ class AgentSession:
         if exit_code != 0:
             lines.append("⚠️  Non-zero exit. Read the error carefully before proceeding.")
             lines.append("   Ask: Is this a missing dep? Wrong path? Wrong flag? Wrong order?")
-        lines.append(f"Turns remaining: {MAX_TURNS - self.turn}")
+
+        # Graduated urgency based on remaining turns
+        if remaining <= 3:
+            lines.append(f"🚨🚨🚨 ONLY {remaining} TURNS LEFT. STOP EXPLORING. Write output NOW and declare <done>.")
+        elif remaining <= 6:
+            lines.append(f"🚨 {remaining} turns left — begin verification and wrap up. No more exploration.")
+        elif remaining <= 10:
+            lines.append(f"⚠️  {remaining} turns remaining — focus on completing current sub-goal only.")
+        else:
+            lines.append(f"Turns remaining: {remaining}")
+
         if current_sg:
             lines.append(f"Current sub-goal: [{current_sg.get('id','?')}] {current_sg.get('goal','')}")
         lines.append("\nWhat is your next action? If this sub-goal is complete, move to the next one per the plan.")

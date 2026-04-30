@@ -40,12 +40,13 @@ async def complete(
     messages: list[dict],
     max_tokens: int = 2048,
     temperature: float = 0.4,
+    model_override: str | None = None,
 ) -> str:
     """Free-form text completion. Used by executor ReAct loop."""
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
-        model=MODEL,
+        model=model_override or MODEL,
         messages=full_messages,  # type: ignore[arg-type]
         max_tokens=max_tokens,
         temperature=temperature,
@@ -61,16 +62,18 @@ async def complete_json(
     messages: list[dict],
     max_tokens: int = 1024,
     temperature: float = 0.2,
+    model_override: str | None = None,
 ) -> dict:
     """
     JSON-mode completion. Used by planner and critic.
     Lower temperature for deterministic structured output.
     Falls back to regex extraction if model doesn't return valid JSON.
+    model_override: use a different model just for this call (e.g. PLANNER_MODEL=deepseek/deepseek-r1)
     """
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
-        model=MODEL,
+        model=model_override or MODEL,
         messages=full_messages,  # type: ignore[arg-type]
         max_tokens=max_tokens,
         temperature=temperature,
