@@ -46,15 +46,26 @@ _INTERACTIVE_PATTERNS = [
 
 # ── 30-second timeout patterns ───────────────────────────────────────────────
 # Commands that reliably exceed the 30s hard timeout and must be rewritten.
+# NOTE: "timeout N apt-get update" and "apt-get update 2>&1 | tail -N" are ALLOWED
+# because they are explicitly time-bounded or output-bounded.
 _TIMEOUT_PATTERNS = [
-    # apt-get update alone takes 15-20s — drop it entirely
+    # bare "apt-get update" with no timeout wrapper or pipe — takes 15-20s
     (r"^\s*apt-get\s+update\s*$",
-     "apt-get update alone takes 15-20s of the 30s budget — skip it and go straight to apt-get install -y"),
-    # apt-get update && apt-get install combined always exceeds 30s
-    (r"apt-get\s+update.*&&.*apt-get\s+install",
-     "apt-get update && apt-get install always times out in 30s — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
-    (r"apt\s+update.*&&.*apt\s+install",
-     "apt update && apt install always times out in 30s — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
+     "apt-get update alone takes 15-20s — skip it or use: timeout 20 apt-get update 2>&1 | tail -3"),
+    # combined apt-get update && apt-get install always exceeds 30s
+    (r"apt-get\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt-get\s+install",
+     "apt-get update && apt-get install always times out — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
+    (r"apt\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt\s+install",
+     "apt update && apt install always times out — drop the update"),
+]
+
+# ── Explicitly safe patterns — skip LLM critic entirely ──────────────────────
+# These are known-good patterns that should never be blocked.
+_ALWAYS_SAFE_PATTERNS = [
+    r"^\s*timeout\s+\d+\s+apt-get\s+update",   # timeout-bounded apt-get update
+    r"^\s*timeout\s+\d+\s+apt\s+update",         # timeout-bounded apt update
+    r"apt-get\s+update\s+2>&1\s*\|",             # piped (output bounded)
+    r"apt\s+update\s+2>&1\s*\|",                 # piped apt update
 ]
 
 _DESTRUCTIVE_PATTERNS = [

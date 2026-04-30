@@ -242,7 +242,21 @@ class AgentSession:
         self.messages.append({"role": "assistant", "content": llm_response})
         logger.info("LLM turn %d: %.200s", self.turn, llm_response)
 
-        # ── Check for <done> tag ──────────────────────────────────────────
+        # ── Detect subgoal advancement from LLM output ───────────────────────
+        # The LLM says "sub-goal [N] complete" or "moving to [N+1]" in its thoughts.
+        # Parse that and advance current_sg_idx so the critic sees the correct subgoal.
+        import re as _re
+        advance_match = _re.search(
+            r"(?:sub.goal|subgoal)\s*\[?(\d+)\]?\s*(?:complete|done|finished|accomplished|moving to|proceed)",
+            llm_response, _re.IGNORECASE
+        )
+        if advance_match:
+            mentioned_sg = int(advance_match.group(1))
+            if mentioned_sg > self.current_sg_idx + 1:
+                self.current_sg_idx = min(mentioned_sg - 1, len(self.subgoals) - 1)
+                logger.info("Subgoal advanced to idx=%d based on LLM output", self.current_sg_idx)
+
+
         done_content = _extract_tag(llm_response, "done")
         if done_content is not None:
             logger.info("Agent declares done at turn %d — running self-verify", self.turn)
