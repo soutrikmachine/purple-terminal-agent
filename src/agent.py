@@ -37,6 +37,29 @@ MAX_TURNS              = int(os.getenv("MAX_TURNS", "30"))
 CONSECUTIVE_FAIL_LIMIT = 3
 VERIFY_RETRY_LIMIT     = 2
 
+# ── Exec URL extraction (kept for test_agent.py compatibility) ───────────────
+# In the live multi-turn protocol the exec URL is never in the message —
+# green executes commands directly. This function is preserved so existing
+# unit tests continue to pass.
+
+_EXEC_URL_PATTERNS = [
+    r"exec[_\s-]?url[:\s]+(\S+)",
+    r"POST\s+(https?://\S+/exec/\S+)",
+    r"(https?://[^\s]+/exec/[^\s]+)",
+    r"shell[_\s-]?url[:\s]+(\S+)",
+    r"exec[_\s-]?endpoint[:\s]+(\S+)",
+]
+
+
+def extract_exec_url(message: str) -> str | None:
+    """Extract exec URL from a message string (regex fallback)."""
+    for pattern in _EXEC_URL_PATTERNS:
+        m = re.search(pattern, message, re.IGNORECASE)
+        if m:
+            return m.group(1).strip().rstrip(".,;")
+    return None
+
+
 # ── Recon bundle ────────────────────────────────────────────────────────────
 
 RECON_CMD = (
