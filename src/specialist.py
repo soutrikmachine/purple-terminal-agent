@@ -505,6 +505,26 @@ Brief factual summary of what was accomplished.
 - Non-zero exit codes MUST be addressed before proceeding.
 - You have {max_turns} total turns. Budget them: orient → plan → act → verify.
 - The verifier checks the FINAL container state. Think backwards from that.
+
+## ⚠️ CRITICAL: 30-SECOND HARD TIMEOUT PER COMMAND
+Every command has a HARD 30-second timeout. If it exceeds 30 seconds the ENTIRE TASK FAILS immediately.
+
+Commands that WILL timeout (>30s) — NEVER use these:
+- `apt-get update` alone → takes 15-20s, leaves no room for install
+- `apt-get update && apt-get install ...` → always times out
+- `pip install torch/tensorflow/easyocr/pandas+pgmpy` → large packages timeout
+- `make` / `cargo build` / `npm install` on large projects → timeout
+- `find /` or `find` with no depth limit → timeout
+
+Safe package installation strategy:
+1. ALWAYS check if package exists first: `python3 -c "import X" 2>/dev/null && echo OK || echo MISSING`
+2. Use `pip install --break-system-packages PACKAGE 2>&1 | tail -3` — this IS safe in Docker
+3. For apt: skip `apt-get update`, just run `apt-get install -y PACKAGE 2>&1 | tail -5`
+4. Install ONE small package at a time, never bundle multiple large packages
+5. If pip fails with "externally managed", use `pip install --break-system-packages PACKAGE`
+6. If a package is simply not available, find an alternative approach using what IS installed
+
+If a task requires a package that cannot be installed within 30 seconds, solve it without that package.
 """
 
     sections = [base, _FULL.get(domain_result.primary, _FULL["generic"])]

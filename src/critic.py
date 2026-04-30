@@ -44,6 +44,19 @@ _INTERACTIVE_PATTERNS = [
      "apt install without -y flag may prompt for confirmation"),
 ]
 
+# ── 30-second timeout patterns ───────────────────────────────────────────────
+# Commands that reliably exceed the 30s hard timeout and must be rewritten.
+_TIMEOUT_PATTERNS = [
+    # apt-get update alone takes 15-20s — drop it entirely
+    (r"^\s*apt-get\s+update\s*$",
+     "apt-get update alone takes 15-20s of the 30s budget — skip it and go straight to apt-get install -y"),
+    # apt-get update && apt-get install combined always exceeds 30s
+    (r"apt-get\s+update.*&&.*apt-get\s+install",
+     "apt-get update && apt-get install always times out in 30s — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
+    (r"apt\s+update.*&&.*apt\s+install",
+     "apt update && apt install always times out in 30s — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
+]
+
 _DESTRUCTIVE_PATTERNS = [
     (r"\brm -rf /\b",         "rm -rf / is catastrophic — never run this"),
     (r"\b> /dev/s",           "overwriting a device file"),
@@ -75,6 +88,10 @@ You receive a draft command and must decide: APPROVE or REVISE.
    - --force / --hard when task says "preserve history" → REVISE
    - Missing -y on apt/pip when running non-interactively → REVISE
    - Missing -L on curl for redirect-following downloads → REVISE
+   - `apt-get update && apt-get install` in one command → REVISE (combined command will timeout in 30s; drop the update, just run `apt-get install -y PACKAGE 2>&1 | tail -5`)
+   - `apt-get update` alone → REVISE (takes 15-20s alone, drop it entirely)
+   - IMPORTANT: `pip install --break-system-packages` IS CORRECT and safe in Docker containers. Do NOT revise this flag away.
+   - `pip install` of multiple large packages (torch, tensorflow, easyocr, numpy+pandas+pgmpy together) → REVISE to install one small package at a time
 
 5. SAFETY: Could this corrupt state needed by the verifier?
    - Deleting test files → REVISE
@@ -103,6 +120,17 @@ def _fast_check(command: str) -> tuple[bool, str, str]:
     for pattern, issue in _DESTRUCTIVE_PATTERNS:
         if re.search(pattern, command):
             return True, issue, ""
+
+    # 30-second timeout patterns — highest priority, auto-fix by stripping update
+    for pattern, issue in _TIMEOUT_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            # Auto-fix: strip "apt-get update &&" from combined commands
+            fixed = re.sub(r"apt-get\s+update\s*(-qq|-q)?\s*(2>&1\s*\|\s*tail\s+-\d+\s*)?&&\s*", "", command)
+            fixed = re.sub(r"apt\s+update\s*(-qq|-q)?\s*(2>&1\s*\|\s*tail\s+-\d+\s*)?&&\s*", "", fixed)
+            # If it was just "apt-get update" alone, replace with a no-op explanation
+            if re.match(r"^\s*apt-get\s+update\s*$", command.strip(), re.IGNORECASE):
+                fixed = "echo 'Skipping apt-get update (30s timeout budget). Installing directly.'"
+            return True, issue, fixed.strip()
 
     for pattern, issue in _INTERACTIVE_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
