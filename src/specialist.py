@@ -505,10 +505,10 @@ Brief factual summary of what was accomplished.
 - Non-zero exit codes MUST be addressed before proceeding.
 - You have {max_turns} total turns. **HARD BUDGET — stick to it or fail.**
   - Turn 0: RECON (already done — free)
-  - Turn 1: Plan injected (free)  
-  - Turns 2-{mid_turns}: EXECUTE subgoals (max 3-4 turns per subgoal)
-  - Turns {verify_start}-{max_turns}: VERIFY and declare done
-- If you are on turn >={danger_turns} and not done: STOP exploring, WRITE a best-effort solution NOW and declare done.
+  - Turn 1: Plan injected (free)
+  - Turns 2-{max_turns - 8}: EXECUTE subgoals (max 3-4 turns per subgoal)
+  - Turns {max_turns - 5}-{max_turns}: VERIFY and declare done
+- If you are on turn >={max_turns - 3} and not done: STOP exploring, WRITE a best-effort solution NOW and declare done.
 - A partial solution that attempts the task scores higher than running out of turns with nothing written.
 - Never spend more than 3 consecutive turns on the same sub-goal — if stuck, move on.
 - The verifier checks the FINAL container state. Think backwards from that.
@@ -529,12 +529,7 @@ Safe package installation strategy:
 3. For apt: skip apt-get update, just run apt-get install -y PACKAGE 2>&1 | tail -5
 4. Install ONE small package at a time
 5. If a package cannot be installed in time, solve the task without it
-""".format(
-    max_turns=max_turns,
-    mid_turns=max_turns - 8,
-    verify_start=max_turns - 5,
-    danger_turns=max_turns - 3,
-)
+"""
 
     sections = [base, _FULL.get(domain_result.primary, _FULL["generic"])]
 
