@@ -24,6 +24,7 @@ import logging
 import os
 
 from llm import complete_json
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ logger = logging.getLogger(__name__)
 PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek-v4-flash"))
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+# This _client is local to planner.py and will ONLY talk to Gemini
+_client: AsyncOpenAI | None = None
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
