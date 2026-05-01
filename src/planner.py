@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 # Set PLANNER_MODEL=deepseek/deepseek-r1 to use R1 for planning only.
 # Falls back to the global MODEL env var (deepseek/deepseek-v4-flash) if not set.
 PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek-v4-flash"))
+API_KEY = os.environ.get("GEMINI_API_KEY", "")
+BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
