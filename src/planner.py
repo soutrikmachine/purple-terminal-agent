@@ -22,8 +22,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import json 
+import re 
 
-from llm import complete_json
+#from llm import complete_json
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,45 @@ API_KEY = os.environ.get("GEMINI_API_KEY", "")
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # This _client is local to planner.py and will ONLY talk to Gemini
-_client: AsyncOpenAI | None = None
+_planner_client: AsyncOpenAI | None = None
+
+def get_planner_client() -> AsyncOpenAI:
+    global _planner_client
+    if _planner_client is None:
+        _planner_client = AsyncOpenAI(api_key=API_KEY, base_url=BASE_URL)
+    return _planner_client
+
+async def planner_complete_json(system: str, messages: list[dict], max_tokens: int = 1500, temperature: float = 0.4) -> dict:
+    """Dedicated JSON completion function for the Planner using Gemini."""
+    client = get_planner_client()
+    full_messages = [{"role": "system", "content": system}] + messages
+    
+    response = await client.chat.completions.create(
+        model=PLANNER_MODEL,
+        messages=full_messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        response_format={"type": "json_object"},
+    )
+    
+    raw = (response.choices[0].message.content or "").strip()
+    
+    # Try direct parse first
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Strip markdown fences and retry
+    clean = re.sub(r"```json\s*|\s*```", "", raw).strip()
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", clean, re.DOTALL)
+        if m:
+            return json.loads(m.group(0))
+        logger.error("Failed to parse JSON from Gemini: %s", raw[:300])
+        return {}
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
@@ -268,12 +308,12 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
 async def _single_plan(user_content: str, task_text: str) -> dict:
     """Generate one plan candidate."""
     try:
-        result = await complete_json(
+        result = await planner_complete_json(
             system=PLANNER_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
             max_tokens=1500,
             temperature=0.4,  # slightly higher for Best-of-N diversity
-            model_override=PLANNER_MODEL,
+            #model_override=PLANNER_MODEL,
         )
     except Exception as e:
         logger.warning("Planner LLM call failed: %s", e)
