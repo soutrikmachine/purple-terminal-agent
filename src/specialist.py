@@ -25,6 +25,9 @@ _ANCHORS: dict[str, list[str]] = {
     "build":    ["makefile", "cmake", "cargo", "gcc", "clang"],
     "system":   ["systemctl", "crontab", "systemd", "chmod", "cron"],
     "text":     ["jq", "awk", "sed", "grep", "regex", "csv", "json"],
+    "security": ["gdb", "objdump", "strace", "radare2", "hashcat", "nmap", "crypt", "pcap"],
+    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "gpu"],
+    "data":     ["pandas", "numpy", "rscript", "scipy", "dataframe", "jupyter", "matplotlib"],
 }
 
 _DOMAIN_KEYWORDS: dict[str, list[str]] = {
@@ -58,6 +61,16 @@ _DOMAIN_KEYWORDS: dict[str, list[str]] = {
                  "transform", "sed", "awk", "grep", "regex", "jq",
                  "logfile", "format", "convert", "encode", "decode",
                  "column", "delimiter"],
+    "security": ["security", "vulnerability", "exploit", "reverse", "binary", "crack", "hash", 
+                 "nmap", "gdb", "objdump", "strings", "strace", "malware", "payload", 
+                 "encrypt", "decrypt", "cipher", "pcap", "wireshark"],
+    "ml":       ["machine learning", "ml", "model", "train", "inference", "dataset", "neural", 
+                 "network", "tensor", "gpu", "cuda", "pytorch", "torch", "tensorflow", 
+                 "huggingface", "transformers", "weights", "epoch", "batch", "loss", 
+                 "optimizer", "gradient", "embedding"],
+    "data":     ["data", "science", "pandas", "numpy", "scipy", "dataframe", "csv", "statistics", 
+                 "analysis", "plot", "graph", "matplotlib", "seaborn", "r", "rscript", "stan", 
+                 "simulation", "aggregate", "mean", "median", "variance"],
 }
 
 _THRESHOLD = 2
@@ -428,34 +441,168 @@ _SHORT["text"] = """
 - CSV with quoted commas breaks simple `cut -d,` — use Python or awk FPAT.
 """
 
+# ─── SECURITY ──────────────────────────────────────────────
+_FULL["security"] = """
+## Security & Reverse Engineering Specialist — Reasoning Scaffold
+
+### How to Diagnose Security State
+- `file target_bin` and `ldd target_bin` → determine architecture, format, and dependencies
+- `strings target_bin | head -50` → extract readable text, search for hardcoded flags/secrets
+- `strace -c ./target_bin` → observe system calls, signals, and file reads during execution
+- `gdb -batch -ex "info functions" target_bin` → list available symbols before stepping through code
+
+### Common Failure Modes
+- Jumping into GDB/disassembly before running basic static analysis (`strings`, `file`, `binwalk`).
+- Executing untrusted binaries blindly without isolating them or using `strace` to monitor side-effects.
+- Endianness mistakes: Patching or reading hex values backward (little-endian vs big-endian).
+- Overlooking file permissions/SUID bits when searching for privilege escalation paths.
+
+### Reasoning Anchors
+- Have I extracted basic metadata (`strings`, `file`) before attempting deep analysis?
+- What inputs is the binary expecting? (arguments, environment variables, specific files)
+- If decrypting/cracking, do I have the correct hash format for tools like `hashcat` or `john`?
+- Am I modifying the binary, or just extracting information from it?
+
+### Process Example (Find hardcoded secret)
+Thought: The task asks to find a password checked by this executable. Let's start with static analysis.
+Command: file vault.bin
+Observation: ELF 64-bit LSB executable, dynamically linked
+Thought: Let's check for obvious hardcoded strings before using a debugger.
+Command: strings vault.bin | grep -i "pass\\|key\\|flag" -B 2 -A 2
+Observation: Enter password: / FLAG{s3cr3t_r3v3rs1ng} / Access denied
+Thought: I see a string that looks like the flag. Let's verify by passing it to the binary.
+Command: ./vault.bin "FLAG{s3cr3t_r3v3rs1ng}"
+[verify expected state before proceeding]
+"""
+_SHORT["security"] = """
+### Security Pitfalls (secondary domain awareness)
+- Don't jump to complex disassembly (GDB) before trying simple static tools (`strings`, `strace`, `file`).
+- Be mindful of little-endian vs big-endian when analyzing hex dumps.
+- Check required environment variables and arguments before analyzing binary crashes.
+"""
+
+# ─── MACHINE LEARNING (ML) ─────────────────────────────────
+_FULL["ml"] = """
+## Machine Learning Specialist — Reasoning Scaffold
+
+### How to Diagnose ML State
+- `nvidia-smi` → check GPU availability, CUDA version, and current memory usage
+- `python3 -c "import torch; print(torch.cuda.is_available())"` → verify framework sees the GPU
+- `ls -lh dataset/` → check data sizes (beware loading massive arrays fully into RAM)
+- `head -n 5 data.jsonl` → verify expected data structures before initializing training loops
+
+### Common Failure Modes
+- **CUDA Out of Memory (OOM)**: Batch size too large, or accumulating gradients inside loops without `item()`/`detach()`.
+- **Device Mismatch**: `Expected all tensors to be on the same device` (e.g., model on GPU, data on CPU).
+- **Shape Mismatch**: `RuntimeError: size mismatch` in matrix operations. Print `tensor.shape` to debug.
+- Loading the entire dataset into memory at once rather than using data loaders/chunking.
+
+### Reasoning Anchors
+- Does this task require a GPU, and is it accessible in the container environment?
+- Are the input tensor shapes aligned with the model's expected input dimensions?
+- Are both the model and the data tensors on the correct `device`?
+- Am I using `with torch.no_grad():` during inference to prevent OOM errors?
+
+### Process Example (Fix device mismatch)
+Thought: The training script crashed. I need to read the traceback to find the exact error.
+Command: python3 train.py 2>&1 | tail -15
+Observation: RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+Thought: The model is likely on cuda:0 but input data is on CPU. Need to inspect the training loop.
+Command: grep -n "forward" train.py -B 5 -A 5
+Observation: 45: outputs = model(inputs)
+Thought: I need to move `inputs` to the model's device before the forward pass.
+Command: sed -i 's/outputs = model(inputs)/inputs = inputs.to(model.device); outputs = model(inputs)/' train.py
+Command: python3 train.py 2>&1 | head -20
+[verify training starts without crashing]
+"""
+_SHORT["ml"] = """
+### ML Pitfalls (secondary domain awareness)
+- Device mismatches: Ensure model and data tensors are on the same device (e.g., `.to(device)`).
+- Shape mismatches: Always print/verify `.shape` when matrix multiplications fail.
+- OOM errors: Reduce batch size or use `torch.no_grad()` for inference scripts.
+"""
+
+# ─── DATA SCIENCE / SCIENTIFIC COMPUTING ───────────────────
+_FULL["data"] = """
+## Data Science & Scientific Computing Specialist — Reasoning Scaffold
+
+### How to Diagnose Data State
+- `head -n 10 data.csv` / `tail -n 10 data.csv` → inspect delimiter, headers, and trailing artifacts
+- `wc -l data.csv` → check scale (thousands vs millions of rows)
+- `python3 -c "import pandas as pd; print(pd.read_csv('data.csv', nrows=5).dtypes)"` → check inferred types
+- For R: `Rscript -e "installed.packages()"` → verify required packages exist
+
+### Common Failure Modes
+- **Memory Limits**: Using `pd.read_csv` on a 10GB file causes an OOM kill. Use `chunksize`, or bash (`awk`/`sed`).
+- **Silent NaNs**: Mathematical operations propagating NaNs, resulting in broken aggregate statistics.
+- **SettingWithCopyWarning**: Modifying a slice of a pandas DataFrame silently fails. Use `.copy()` or `.loc`.
+- **Language Nuances**: 1-based indexing in R vs 0-based in Python. Easy to off-by-one when translating scripts.
+- Type errors in CSVs: A single string "NA" in a numeric column turns the entire column into an object type.
+
+### Reasoning Anchors
+- How large is the dataset? (Determines if I use pandas, chunking, or bash text tools).
+- Have I checked for missing values, malformed rows, or unexpected delimiters?
+- Is the script failing on type coercion? (Always check `.dtypes`).
+- Am I using the correct language ecosystem expected by the task? (R vs Python).
+
+### Process Example (Process large data safely)
+Thought: The task asks for the average of the 'price' column in a large CSV. I should check file size first.
+Command: ls -lh sales.csv
+Observation: 4.5G sales.csv
+Thought: It's 4.5GB, too large for a basic pandas read_csv on limited memory. I'll check the structure.
+Command: head -n 3 sales.csv
+Observation: id,date,price,store\n1,2024-01-01,15.99,A\n2,2024-01-01,NA,B
+Thought: There are headers and text 'NA' values. I can use awk to sum it efficiently without memory issues.
+Command: awk -F',' 'NR>1 && $3!="NA" {sum+=$3; count++} END {print sum/count}' sales.csv
+[verify output format meets requirements]
+"""
+_SHORT["data"] = """
+### Data/Science Pitfalls (secondary domain awareness)
+- Never `pd.read_csv` massive files without checking `ls -lh` first — use chunking or `awk` to avoid OOM.
+- Watch out for silent NaNs or "NA" strings poisoning aggregate statistics and type coercion.
+- Remember 1-based indexing in R vs 0-based indexing in Python.
+"""
+
 # ─── GENERIC ───────────────────────────────────────────────
 _FULL["generic"] = """
 ## General Terminal Task — Reasoning Scaffold
 
 ### Universal Orientation Protocol (always start here)
-1. `pwd && ls -la` — where am I, what's here
-2. `find . -maxdepth 2 -type f | sort` — full file inventory
-3. Read any README, task instructions, or config files present
-4. Identify the exact success condition from the task description
-5. Plan sub-goals before issuing any modifying command
+1. `pwd && ls -la` — identify current working directory and visible files.[cite: 1]
+2. `find . -maxdepth 2 -name "tests" -type d` — locate the benchmark verification folder.
+3. `ls -F tests/ 2>/dev/null` — check for `test.sh` or `test_outputs.py` immediately.
+4. `find . -maxdepth 2 -type f | sort` — full file inventory for context.[cite: 1]
+5. Identify the exact success condition from the task description and match it to available tests.[cite: 1, 3]
 
-### Diagnostic Mindset
-- What is the CURRENT state? (explore before acting)
-- What is the DESIRED state? (re-read task if unclear)
-- What is the SMALLEST change that gets from current to desired?
-- How will I VERIFY the change worked?
+### Diagnostic & Verification Mindset
+- **Grounding**: What is the CURRENT state? (Explore with `cat`, `ls`, and `ss` before acting).[cite: 1, 3]
+- **The Harness**: The `tests/` directory contains the "answer key." Run it early to see what is currently failing.
+- **Minimalism**: What is the SMALLEST change that satisfies the `test.sh` requirements?[cite: 1]
+- **Proof**: A task is NOT done until the internal verifier or manual check confirms the state change.
 
 ### Common Cross-Domain Failures
-- Assuming file paths without checking: always `ls` first
-- Running commands as root when task requires specific user (check `id`)
-- Modifying files that shouldn't be touched (read task constraints carefully)
-- Declaring done without verifying the actual end state
+- **Premature Completion**: Declaring `<done>` before running the provided benchmark scripts.[cite: 3]
+- **Silent Failures**: Assuming a command worked because it had no output (always verify with `cat` or `ls`).[cite: 1]
+- **Path Blindness**: Assuming `tests/` is in the root; always use `find` to locate the test suite.[cite: 3]
+- **Timeout Neglect**: Forgetting that every command has a hard 30s limit (avoid long `apt` or `pip` chains).[cite: 2]
 
 ### Reasoning Anchors
-- Have I re-read the task description recently?
-- Is my current approach actually working toward the stated goal?
-- What would the verifier check? (think backwards from success)
-- Are there simpler approaches I haven't considered?
+- Have I located and read the benchmark's `test.sh` or `test_outputs.py`?[cite: 3]
+- Does my current plan address the specific failures reported by the test suite?[cite: 3]
+- What would the evaluator check? (Think backwards from the success script).[cite: 1]
+- Is there a simpler approach that bypasses complex dependencies?[cite: 1]
+
+### Process Example (Rigorous Verification)
+Thought: Task says to fix the configuration. I see a `tests/` directory. I should check the current test state first.
+Command: ls -F tests/
+Observation: test.sh*  test_outputs.py
+Thought: I will run the existing test to identify exactly what is broken.
+Command: bash tests/test.sh
+Observation: FAILED: config key 'port' expected 8080, found 80
+Thought: The test tells me exactly what to fix. I will update the config and then re-run the test.
+Command: sed -i 's/port: 80/port: 8080/' config.yaml
+Command: bash tests/test.sh
+[verify "PASSED" appears before declaring done]
 """
 _SHORT["generic"] = ""  # Not used as secondary
 

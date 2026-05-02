@@ -50,13 +50,17 @@ _INTERACTIVE_PATTERNS = [
 # because they are explicitly time-bounded or output-bounded.
 _TIMEOUT_PATTERNS = [
     # bare "apt-get update" with no timeout wrapper or pipe — takes 15-20s
-    (r"^\s*apt-get\s+update\s*$",
+    (r"^\s*(apt-get|apt)\s+update\s*$",
      "apt-get update alone takes 15-20s — skip it or use: timeout 20 apt-get update 2>&1 | tail -3"),
     # combined apt-get update && apt-get install always exceeds 30s
-    (r"apt-get\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt-get\s+install",
+    (r"(apt-get|apt)\s+update\s*(?:2>&1[^&]*)?\s*&&\s*(apt-get|apt)\s+install",
      "apt-get update && apt-get install always times out — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
-    (r"apt\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt\s+install",
-     "apt update && apt install always times out — drop the update"),
+    # Large ML packages that exceed 30s download/install window
+    (r"pip\s+install.*(torch|pytorch|tensorflow|easyocr|nvidia-|transformers)", 
+     "Large ML packages will exceed the 30s timeout. Skip or use a smaller alternative."),
+    # Aggressive security scans
+    (r"nmap\s+-[as][S|V|C]", 
+     "Aggressive nmap scans often exceed 30s. Use simple nmap or target specific ports."),
 ]
 
 # ── Explicitly safe patterns — skip LLM critic entirely ──────────────────────
@@ -132,24 +136,28 @@ def _fast_check(command: str) -> tuple[bool, str, str]:
         if re.search(pattern, command):
             return True, issue, ""
 
-    # 30-second timeout patterns — highest priority, auto-fix by stripping update
+    # 30-second timeout patterns — highest priority
     for pattern, issue in _TIMEOUT_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
             # Auto-fix: strip "apt-get update &&" from combined commands
-            fixed = re.sub(r"apt-get\s+update\s*(-qq|-q)?\s*(2>&1\s*\|\s*tail\s+-\d+\s*)?&&\s*", "", command)
-            fixed = re.sub(r"apt\s+update\s*(-qq|-q)?\s*(2>&1\s*\|\s*tail\s+-\d+\s*)?&&\s*", "", fixed)
+            fixed = re.sub(r"(apt-get|apt)\s+update\s*(-qq|-q)?\s*(2>&1\s*\|\s*tail\s+-\d+\s*)?&&\s*", "", command)
+            
             # If it was just "apt-get update" alone, replace with a no-op explanation
-            if re.match(r"^\s*apt-get\s+update\s*$", command.strip(), re.IGNORECASE):
-                fixed = "echo 'Skipping apt-get update (30s timeout budget). Installing directly.'"
+            if re.match(r"^\s*(apt-get|apt)\s+update\s*$", command.strip(), re.IGNORECASE):
+                fixed = "echo 'Skipping update (30s limit). Proceeding to direct install.'"
+            
+            # For large pip installs or nmap, no simple auto-fix; return empty string to force agent to re-plan
+            if any(kw in command for kw in ["pip install", "nmap"]):
+                 return True, issue, ""
+
             return True, issue, fixed.strip()
 
+    # Interactive patterns (keeping existing source logic)
     for pattern, issue in _INTERACTIVE_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
-            # Provide automatic fixes for the most common cases
             fix = ""
             if "git rebase -i" in command:
-                # Auto-fix: inject GIT_SEQUENCE_EDITOR
-                fix = ""  # let LLM generate the specific fix
+                fix = ""  # Let LLM generate specific sequence editor fix
             elif "git commit" in command and "-m" not in command:
                 fix = command.replace("git commit", "git commit --no-edit")
             elif "git merge" in command and "--no-edit" not in command:
@@ -225,7 +233,6 @@ Is this command safe to execute? Check all 5 failure modes."""
 def _is_clearly_safe(command: str) -> bool:
     """
     Heuristic: skip LLM critic for obviously safe read-only commands.
-    These will never hang, destroy state, or cause harm.
     """
     safe_prefixes = [
         "ls", "cat ", "head ", "tail ", "echo ", "pwd", "find ", "grep ",
@@ -235,6 +242,8 @@ def _is_clearly_safe(command: str) -> bool:
         "ss -", "netstat ", "ps aux", "ps -", "df ", "du ",
         "sqlite3 ", "psql ", "curl -I", "curl --head",
         "crontab -l", "systemctl status",
+        # ML & Security Diagnostic tools
+        "nvidia-smi", "nm ", "strings ", "objdump -h", "ldd ", "binwalk ",
     ]
     stripped = command.strip()
     return any(stripped.startswith(p) for p in safe_prefixes)

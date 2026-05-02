@@ -71,6 +71,12 @@ FAIL 4 — code-from-image (stuck in install loop):
   Fix: If tesseract not in apt, skip OCR entirely — use PIL to read text from image directly,
   or write the output based on what's visible in the task description.
 
+FAIL 5 — generic-task (ignored test harness):
+  Subgoal: "Implement solution"
+  What happened: Agent spent 20 turns guessing the configuration format.
+  Result: Failed. A `tests/test.sh` file existed that explained the exact format needed.
+  Fix: Always locate and READ the `tests/` directory (especially `test.sh` or `test_outputs.py`) in Subgoal 1 or 2.
+
 ## ✅ Patterns That SUCCEED
 
 SUCCESS 1: Check before install
@@ -91,18 +97,20 @@ TURN_ALLOCATION_RULES = """
 ## Turn Allocation (MANDATORY — you MUST fill these fields)
 
 For each subgoal, specify:
-  "max_turns": N          — hard cap on exec_request turns for this subgoal (1-6 max per subgoal)
-  "timeout_risk": true/false — does it involve apt-get install or pip install of large packages?
+  "max_turns": N          — hard cap on execution turns for this subgoal (1-8 max).
+  "timeout_risk": true/false — does it involve apt-get, pip, or heavy ML operations?
 
 Allocation rules:
-  - Exploration subgoal: max_turns = 2
-  - Implementation subgoal: max_turns = 4-6
-  - Testing subgoal: max_turns = 2
-  - Verification subgoal: max_turns = 2
-  - SUM of all max_turns MUST be ≤ {budget} (we reserve 3 for safety margin)
-  - If timeout_risk = true: cap max_turns at 2 AND flag the risk in the "risks" array
-  - If sum exceeds budget: MERGE or REMOVE subgoals until it fits
-  - NEVER plan more than 5 subgoals total — too granular = runs out of turns
+  - Exploration & Harness Recon: max_turns = 2 (Locate test.sh and environment metadata)
+  - Implementation Subgoal: max_turns = 4-8 (Higher end for ML/Security/Data tasks)
+  - Baseline/Intermediate Testing: max_turns = 2[cite: 3, 4]
+  - Final Harness Verification: max_turns = 3 (Reserve time to debug failures in tests/test.sh)[cite: 3, 4]
+  
+Constraints:
+  - SUM of all max_turns MUST be ≤ {budget} (we reserve 3 turns for global safety).
+  - If sum exceeds budget: Merge subgoals or prioritize implementation over exploration.
+  - NEVER plan more than 5 subgoals total — over-granularity causes turn-budget exhaustion[cite: 4].
+  - If timeout_risk = true: Cap that specific subgoal at 2 turns to fail fast if it hangs.
 """
 
 
@@ -136,15 +144,17 @@ Your job: produce a structured JSON plan that breaks the task into ORDERED sub-g
 }
 
 ## Planning Rules
-- First sub-goal should ALWAYS be further exploration if state is unclear.
-- Keep sub-goals small: max ~5 commands each.
-- Order matters: earlier sub-goals must not depend on later ones.
-- Include an explicit verification sub-goal at the end.
+- First sub-goal should ALWAYS be recon + locating the `tests/` directory (look for `test.sh` or `test_outputs.py`)[cite: 3, 4].
+- Second sub-goal should be running the official test suite to establish a baseline failure and identify the exact objective[cite: 3].
+- Keep sub-goals small: max ~5 commands each[cite: 4].
+- Order matters: earlier sub-goals must not depend on later ones[cite: 4].
+- Final sub-goal MUST be the execution of the official benchmark test harness (`tests/test.sh`)[cite: 3, 4].
 - Do NOT include specific commands in the plan — that is the executor's job.
-- Risks should be specific to THIS task, not generic warnings.
-- Total estimated_turns must be realistic (sum should be under max_turns - 5).
-- NEVER plan apt-get update as a step — it alone takes 15-20s of the 30s budget.
-- If a subgoal needs a Python package: plan "check then install with --break-system-packages".
+- Risks should be specific to THIS task (e.g., "GPU memory limit," "Missing C++ headers")[cite: 4].
+- Total turns must be realistic: reserve 5 turns for the final verification/debugging phase[cite: 4].
+- NEVER plan apt-get update — it takes 20s. Plan direct installs: `apt-get install -y PACKAGE 2>&1 | tail -5`[cite: 2, 4].
+- If a subgoal needs a Python package: plan "check then install with --break-system-packages"[cite: 2, 4].
+- If specialized tasks (Security/ML/Data) are detected, plan for diagnostic tool checks (e.g., ldd, nvidia-smi) in the first 2 turns[cite: 1].
 - If image analysis is needed: plan "write ONE complete script", not iterative pixel loops.
 """
 
@@ -155,6 +165,7 @@ def _score_plan(plan: dict, budget: int) -> float:
     Higher is better.
     """
     score = 0.0
+    all_text = str(plan).lower()
     subgoals = plan.get("subgoals", [])
 
     # Right number of subgoals (3-5 is ideal)
@@ -193,6 +204,14 @@ def _score_plan(plan: dict, budget: int) -> float:
     # Rewards single-script approach for image tasks
     if "script" in all_text or "write" in all_text:
         score += 1.0
+
+    # NEW: Reward benchmark-aware planning
+    if "tests/" in all_text or "test.sh" in all_text or "test_outputs.py" in all_text:
+        score += 5.0  # High reward for identifying the harness
+    
+    # NEW: Reward early baseline testing[cite: 3]
+    if len(subgoals) > 1 and ("run" in str(subgoals[1]).lower() or "test" in str(subgoals[1]).lower()):
+        score += 2.0
 
     return score
 

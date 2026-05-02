@@ -20,11 +20,18 @@ from executor import ExecClient, ExecResult
 logger = logging.getLogger(__name__)
 
 # Commands to find test scripts (in priority order)
+# Commands to find tests in order of "Authority"
 _FIND_TESTS = [
-    "find . -maxdepth 4 -name 'test_*.sh' -o -name '*.test.sh' -o -name 'check_*.sh' | head -10",
-    "find . -maxdepth 4 -name '*.bats' | head -10",
-    "find . -maxdepth 4 \\( -name 'test_*.py' -o -name '*_test.py' \\) -not -path '*/.*' | head -10",
-    "find /usr/local/bin /usr/bin -name 'test_*' -o -name 'check_*' 2>/dev/null | head -5",
+    # 1. Official Terminal-Bench 2.0 Harness Scripts
+    "find . -maxdepth 2 -name 'test.sh'", 
+    "find ./tests -name 'test_outputs.py'",
+    
+    # 2. Benchmark Test Directories
+    "find ./tests -maxdepth 1 -type f \( -name '*.sh' -o -name '*.py' \)",
+    
+    # 3. Generic Fallbacks (kept at the bottom for edge-case coverage)
+    "find . -maxdepth 4 -name 'test_*.sh' -o -name 'check_*.sh' | head -5",
+    "find . -maxdepth 4 \( -name 'test_*.py' -o -name '*_test.py' \) | head -5",
 ]
 
 _RECON_VERIFY = [
@@ -76,35 +83,44 @@ async def self_verify(exec_client: ExecClient, task_text: str) -> tuple[bool, st
 
 
 def _build_run_command(test_file: str) -> str:
-    """Choose the right runner for the test file type."""
+    """Choose the right runner for Terminal-Bench components"""
+    # Use 28s to give the executor a 2s buffer before the hard 30s timeout
+    timeout_prefix = "timeout 28s " 
+    
+    if "test.sh" in test_file:
+        return f"{timeout_prefix} bash {test_file} 2>&1"
+        
+    if test_file.endswith("test_outputs.py"):
+        # Explicitly use python3 as required by Terminal-Bench
+        return f"{timeout_prefix} python3 {test_file} 2>&1"
+        
     if test_file.endswith(".py"):
-        return f"python3 {test_file} 2>&1"
-    if test_file.endswith(".bats"):
-        return f"bats {test_file} 2>&1"
-    # Default: bash
-    return f"bash {test_file} 2>&1"
+        # Try pytest first for robust discovery, fallback to python3[cite: 3]
+        return f"{timeout_prefix} pytest {test_file} 2>&1 || python3 {test_file} 2>&1"
+        
+    return f"{timeout_prefix} bash {test_file} 2>&1"
 
 
 async def _verify_by_observation(
     exec_client: ExecClient,
     task_text: str,
 ) -> tuple[bool, str]:
-    """
-    Fallback: no test files found.
-    Run observable state commands and return them as context.
-    Caller (agent) decides whether to trust this is done.
-    """
+    """Fallback: No benchmark scripts found. Force manual verification[cite: 3]"""
     observations = []
-    for cmd in _RECON_VERIFY:
+    # Broaden reconnaissance for new specialist domains
+    verify_cmds = ["ls -R", "ps aux | grep -v grep", "ss -tlnp", "git status -s"]
+    
+    for cmd in verify_cmds:
         result = await exec_client.run(cmd)
         if result.stdout:
-            observations.append(f"$ {cmd}\n{result.stdout[:400]}")
+            observations.append(f"$ {cmd}\n{result.stdout[:300]}")
 
     details = (
-        "No test files found. Observable state:\n"
-        + "\n".join(observations)
-        + "\n\nVerify manually that this matches the task requirements."
+        "CRITICAL: No official Terminal-Bench verification scripts found.\n"
+        "Observed State:\n" + "\n".join(observations) +
+        "\n\nVERIFICATION FAILED: You must perform a manual check "
+        "(e.g., cat a file, curl a port, or query a DB) to confirm your "
+        "changes meet all task requirements before you can declare <done>."
     )
-    # Return True optimistically — no way to verify without test files
-    # The green agent's Harbor verifier will make the final call
-    return True, details
+    # Return False to force the agent to run at least one manual check[cite: 3]
+    return False, details
