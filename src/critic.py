@@ -50,17 +50,19 @@ _INTERACTIVE_PATTERNS = [
 # because they are explicitly time-bounded or output-bounded.
 _TIMEOUT_PATTERNS = [
     # bare "apt-get update" with no timeout wrapper or pipe — takes 15-20s
-    (r"^\s*(apt-get|apt)\s+update\s*$",
+    (r"^\s*apt-get\s+update\s*$",
      "apt-get update alone takes 15-20s — skip it or use: timeout 20 apt-get update 2>&1 | tail -3"),
     # combined apt-get update && apt-get install always exceeds 30s
-    (r"(apt-get|apt)\s+update\s*(?:2>&1[^&]*)?\s*&&\s*(apt-get|apt)\s+install",
+    (r"apt-get\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt-get\s+install",
      "apt-get update && apt-get install always times out — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
+    (r"apt\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt\s+install",
+     "apt update && apt install always times out — drop the update"),
     # Large ML packages that exceed 30s download/install window
     (r"pip\s+install.*(torch|pytorch|tensorflow|easyocr|nvidia-|transformers)", 
      "Large ML packages will exceed the 30s timeout. Skip or use a smaller alternative."),
     # Aggressive security scans
     (r"nmap\s+-[as][S|V|C]", 
-     "Aggressive nmap scans often exceed 30s. Use simple nmap or target specific ports."),
+     "Aggressive nmap scans often exceed 30s. Use fast/targeted scans like nmap -p- or nmap -F."),
 ]
 
 # ── Explicitly safe patterns — skip LLM critic entirely ──────────────────────
@@ -79,51 +81,48 @@ _DESTRUCTIVE_PATTERNS = [
     (r"\bchmod -R 777\b",     "chmod 777 recursively removes all security"),
 ]
 
-CRITIC_SYSTEM = """You are a pre-flight safety reviewer for a terminal agent.
+CRITIC_SYSTEM = """You are a pre-flight safety and efficiency reviewer for a terminal agent.
+Your primary goal is to REPAIR commands so they survive a strict 30-second timeout and do not hang.
 
-You receive a draft command and must decide: APPROVE or REVISE.
+## Mandatory Heuristics (in priority order):
 
-## Check for these failure modes (in priority order):
+1. TIMEOUT PREVENTION (30s Budget):
+   - `apt-get update` is a turn-waster. Silently REMOVE it from chained commands.[cite: 16]
+   - If a command is just `apt-get update`, REVISE to `echo "Skipping update"`.[cite: 16]
+   - Combined `update && install` MUST be split; remove the update and only keep the install.[cite: 16]
 
-1. INTERACTIVE HANG: Will this command open an editor, pager, or wait for stdin?
-   - git rebase -i without GIT_SEQUENCE_EDITOR set → REVISE
-   - vim, nano, less, man, read → REVISE
-   - Any command that pauses waiting for user input → REVISE
+2. INSTALLATION STRATEGY:
+   - FRAGMENTATION: If installing multiple large packages (e.g., pandas+pgmpy, torch, tensorflow), REVISE to install only ONE package per turn.[cite: 16]
+   - CHECK BEFORE INSTALL: If installing a Python package, REVISE to: `python3 -c "import X" 2>/dev/null || pip install --break-system-packages X 2>&1 | tail -n 5`.[cite: 16, 19]
+   - OUTPUT BOUNDING: Every `apt` or `pip` command MUST end with `2>&1 | tail -n 5` to prevent terminal buffer hangs.[cite: 16]
 
-2. BLIND COPYING: Is this command grounded in the OBSERVED state, or copied from memory?
-   - References files/paths NOT seen in the observation history → REVISE  
-   - Uses hardcoded values (branch names, commit counts) not confirmed by reading → REVISE
-   - Pattern-matches the task type without checking actual environment → REVISE
+3. INTERACTIVE HANGS:
+   - REVISE any command that opens an editor/pager (vim, nano, less, man).[cite: 16]
+   - Force `GIT_SEQUENCE_EDITOR=":"` for rebases and `--no-edit` for commits/merges.[cite: 16]
 
-3. DESTRUCTIVE WITHOUT EXPLORATION: Is this modifying/deleting before sufficient reading?
-   - First command is already writing/deleting (should explore first) → REVISE
-   - rm, overwrite, truncate on files that haven't been cat'd → REVISE
+4. GROUNDING & BLIND COPYING:
+   - REVISE if the command references a file path not yet seen in the observation history.[cite: 16]
+   - Stop the agent from assuming directory structures (e.g., assuming a `tests/` folder exists before `ls` confirms it).[cite: 16]
 
-4. WRONG FLAGS FOR CONTEXT:
+5. NON-DESTRUCTIVE MODS:
+   - REVISE `rm` or overwrite commands on files that haven't been `cat`'d or inspected first.[cite: 16]
+
+6. WRONG FLAGS FOR CONTEXT:
    - --force / --hard when task says "preserve history" → REVISE
    - Missing -y on apt/pip when running non-interactively → REVISE
    - Missing -L on curl for redirect-following downloads → REVISE
    - `apt-get update && apt-get install` in one command → REVISE (combined command will timeout in 30s; drop the update, just run `apt-get install -y PACKAGE 2>&1 | tail -5`)
    - `apt-get update` alone → REVISE (takes 15-20s alone, drop it entirely)
    - IMPORTANT: `pip install --break-system-packages` IS CORRECT and safe in Docker containers. Do NOT revise this flag away.
-   - `pip install` of multiple large packages (torch, tensorflow, easyocr, numpy+pandas+pgmpy together) → REVISE to install one small package at a time
-
-5. SAFETY: Could this corrupt state needed by the verifier?
-   - Deleting test files → REVISE
-   - Overwriting config that wasn't read first → REVISE
-
-## If APPROVE: command is safe and grounded.
-## If REVISE: provide a corrected command that achieves the same goal safely.
 
 ## Output Format (JSON only)
 {
   "verdict": "APPROVE" or "REVISE",
-  "issue": "brief description of the problem (empty string if APPROVE)",
-  "revised_command": "safer command (empty string if APPROVE)"
+  "issue": "brief description of the failure mode",
+  "revised_command": "the corrected command to be executed immediately"
 }
 
-Be decisive. Lean toward APPROVE for simple read operations.
-Lean toward REVISE for any command that could hang or cause irreversible damage.
+Lean toward REVISE for any multi-package install or update command.[cite: 16]
 """
 
 

@@ -22,11 +22,10 @@ logger = logging.getLogger(__name__)
 # Commands to find test scripts (in priority order)
 # Commands to find tests in order of "Authority"
 _FIND_TESTS = [
-    r"find . -maxdepth 2 -name 'test.sh'", 
-    r"find ./tests -name 'test_outputs.py'",
-    r"find ./tests -maxdepth 1 -type f \( -name '*.sh' -o -name '*.py' \)",
-    r"find . -maxdepth 4 -name 'test_*.sh' -o -name 'check_*.sh' | head -5",
-    r"find . -maxdepth 4 \( -name 'test_*.py' -o -name '*_test.py' \) | head -5",
+    r"find . -maxdepth 4 -name 'test_*.sh' -o -name '*.test.sh' -o -name 'check_*.sh' | head -10",
+    r"find . -maxdepth 4 -name '*.bats' | head -10",
+    r"find . -maxdepth 4 \( -name 'test_*.py' -o -name '*_test.py' \) -not -path '*/.*' | head -10",
+    r"find /usr/local/bin /usr/bin -name 'test_*' -o -name 'check_*' 2>/dev/null | head -5",
 ]
 
 _RECON_VERIFY = [

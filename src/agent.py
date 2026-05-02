@@ -293,9 +293,9 @@ class AgentSession:
         if critic_note:
             logger.info("Critic revised: %s → %s | %s", command[:60], final_cmd[:60], critic_note)
             # Inform LLM the command was revised
-            self.messages.append({
-                "role": "user",
-                "content": f"🔧 Critic safety note: {critic_note}\n   Original: `{command}`\n   Will execute: `{final_cmd}`"
+            #self.messages.append({
+             #   "role": "user",
+             #  "content": f"🔧 Critic safety note: {critic_note}\n   Original: `{command}`\n   Will execute: `{final_cmd}`"
             })
 
         self.collected_commands.append(final_cmd)

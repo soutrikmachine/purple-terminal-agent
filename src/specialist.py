@@ -22,12 +22,12 @@ _ANCHORS: dict[str, list[str]] = {
     "python":   ["python", "python3", "pip", "virtualenv", "venv"],
     "database": ["sqlite", "sqlite3", "postgresql", "postgres", "psql", "mysql"],
     "network":  ["curl", "wget", "nginx", "apache", "http", "https"],
-    "build":    ["makefile", "cmake", "cargo", "gcc", "clang", "pmars", "compile"],
+    "build":    ["makefile", "cmake", "cargo", "gcc", "clang", "compile", "build"],
     "system":   ["systemctl", "crontab", "systemd", "chmod", "cron"],
     "text":     ["jq", "awk", "sed", "grep", "regex", "csv", "json"],
-    "security": ["gdb", "objdump", "strace", "radare2", "hashcat", "nmap", "crypt", "pcap"],
-    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "gpu"],
-    "data":     ["pandas", "numpy", "rscript", "scipy", "dataframe", "jupyter", "matplotlib", "bayesian"],
+    "security": ["openssl", "secret", "vulnerability", "hash", "crack", "leak", "certificate"],
+    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "caffe", "iteration", "solver"],
+    "data":     ["pandas", "numpy", "dataframe", "rscript", "scipy", "bayesian", "pgmpy", "statsmodel"],
 }
 
 _DOMAIN_KEYWORDS: dict[str, list[str]] = {
@@ -570,12 +570,12 @@ _FULL["generic"] = """
 ## General Terminal Task — Reasoning Scaffold
 
 ### Universal Orientation Protocol (MANDATORY Turn 1)
-You must execute the following as ONE single command to preserve turn budget:
-`pwd && ls -la && find . -maxdepth 2 -name "tests" -type d && ls -F tests/ 2>/dev/null`
+Execute this as ONE command to see the app structure:
+`pwd && ls -F && ls -F tests/ 2>/dev/null`
 
 1. Identify your location and visible files.
 2. Locate the benchmark verification folder (`tests/`).[cite: 3]
-3. Immediately check for `test.sh` or `test_outputs.py`.[cite: 3]
+3. Immediately check for `tests/test.sh` or `tests/test_outputs.py`.[cite: 3]
 4. Identify the success condition from the task and match it to available tests.[cite: 1, 3]
 
 ### Diagnostic & Verification Mindset
