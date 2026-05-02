@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek-v4-flash"))
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
-PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
+PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "1"))  # set to 1 to disable
 
 # approved 12s threshold logic
 PLAN_TIMEOUT = 12.0

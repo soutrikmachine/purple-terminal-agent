@@ -35,7 +35,7 @@ logger.info("Purple Terminal Agent  port=%d", PORT)
 logger.info("Executor model: %s", os.getenv("MODEL", "deepseek/deepseek-v4-flash"))
 logger.info("Planner model:  %s", os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek-v4-flash")))
 logger.info("OpenRouter key: %s", "SET ✓" if os.getenv("OPENROUTER_API_KEY") else "MISSING ✗")
-logger.info("Best-of-N:      %s", os.getenv("PLAN_BEST_OF_N", "3"))
+logger.info("Best-of-N:      %s", os.getenv("PLAN_BEST_OF_N", "1"))
 logger.info("Protocol:       terminal-bench-shell-v1 (multi-turn A2A)")
 logger.info("=" * 60)
 
