@@ -481,10 +481,10 @@ Command: export API_KEY=s3cr3t_v4ult_123 && bash tests/test.sh
 [verify expected state before proceeding]
 """
 _SHORT["security"] = """
-### Security Pitfalls (secondary domain awareness)
-- Don't jump to complex disassembly (GDB) before trying simple static tools (`strings`, `strace`, `file`).
-- Be mindful of little-endian vs big-endian when analyzing hex dumps.
-- Check required environment variables and arguments before analyzing binary crashes.
+### Security & Forensic Pitfalls
+- **Forensic Recovery**: Use `git reflog` and `git log --patch` to find "deleted" secrets or keys in history[cite: 1].
+- **Static Analysis First**: Run `file`, `ldd`, and `nm -D` before using a debugger to find missing libs or hidden entry points[cite: 3].
+- **Read-Only**: Never run destructive commands like `git prune` or overwrite logs before extracting metadata.
 """
 
 # ─── MACHINE LEARNING (ML) ─────────────────────────────────
@@ -525,10 +525,10 @@ Command: sed -i 's/max_iter: [0-9]*/max_iter: 5/' ./models/bvlc_reference_caffen
 [verify change before running caffe train]
 """
 _SHORT["ml"] = """
-### ML Pitfalls (secondary domain awareness)
-- Device mismatches: Ensure model and data tensors are on the same device (e.g., `.to(device)`).
-- Shape mismatches: Always print/verify `.shape` when matrix multiplications fail.
-- OOM errors: Reduce batch size or use `torch.no_grad()` for inference scripts.
+### ML & Framework Pitfalls
+- **Assume Pre-installed**: Check `/app/caffe` or framework paths first; don't waste 10 turns building from source[cite: 1].
+- **Iteration Limits**: Use `sed` to set `max_iter` to the exact required number (e.g., 5) in `.prototxt` or scripts to avoid 30s timeouts[cite: 3].
+- **Resource Check**: Run `nvidia-smi` Turn 1 to verify GPU state before initializing large models[cite: 3].
 """
 
 # ─── DATA SCIENCE / SCIENTIFIC COMPUTING ───────────────────
@@ -578,10 +578,10 @@ python3 solution.py 2>&1 | tail -n 10
 [verify output format meets requirements]
 """
 _SHORT["data"] = """
-### Data/Science Pitfalls (secondary domain awareness)
-- Never `pd.read_csv` massive files without checking `ls -lh` first — use chunking or `awk` to avoid OOM.
-- Watch out for silent NaNs or "NA" strings poisoning aggregate statistics and type coercion.
-- Remember 1-based indexing in R vs 0-based indexing in Python.
+### Data & Bayesian Pitfalls
+- **Sampling Safety**: For Stan/MCMC tasks, always set `chains=1` and `iter=100` to survive the 30s turn limit[cite: 1, 6].
+- **Memory Management**: Check CSV scale with `ls -lh` first; use `nrows=100` for recon to avoid OOM hangs[cite: 5].
+- **Deterministic DAGs**: Use `HillClimbSearch` with `BicScore` in pgmpy for faster, more reliable benchmark recovery[cite: 6].
 """
 
 # ─── GENERIC ───────────────────────────────────────────────
