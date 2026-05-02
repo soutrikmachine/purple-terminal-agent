@@ -22,14 +22,9 @@ logger = logging.getLogger(__name__)
 # Commands to find test scripts (in priority order)
 # Commands to find tests in order of "Authority"
 _FIND_TESTS = [
-    # 1. Official Terminal-Bench 2.0 Harness Scripts
     "find . -maxdepth 2 -name 'test.sh'", 
     "find ./tests -name 'test_outputs.py'",
-    
-    # 2. Benchmark Test Directories
     "find ./tests -maxdepth 1 -type f \( -name '*.sh' -o -name '*.py' \)",
-    
-    # 3. Generic Fallbacks (kept at the bottom for edge-case coverage)
     "find . -maxdepth 4 -name 'test_*.sh' -o -name 'check_*.sh' | head -5",
     "find . -maxdepth 4 \( -name 'test_*.py' -o -name '*_test.py' \) | head -5",
 ]
