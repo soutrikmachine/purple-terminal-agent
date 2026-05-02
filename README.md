@@ -3,7 +3,7 @@
 [![CI](https://github.com/soutrikmachine/purple-terminal-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/soutrikmachine/purple-terminal-agent/actions)
 [![AgentBeats Sprint 3](https://img.shields.io/badge/AgentBeats-Sprint%203-purple)](https://agentbeats.dev)
 [![Terminal Bench 2.0](https://img.shields.io/badge/Benchmark-Terminal%20Bench%202.0-blue)](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
-[![Docker](https://img.shields.io/badge/Docker-rimodock%2Fpurple--terminal--agent-blue)](https://hub.docker.com/r/rimodock/purple-terminal-agent)
+[![Docker](https://img.shields.io/badge/Docker-dockername%2Fpurple--terminal--agent-blue)](https://hub.docker.com/r/'yourdockername'/purple-terminal-agent)
 
 A **Hierarchical Planner + Critic Pre-flight + RAG** terminal agent for the
 [AgentX–AgentBeats](https://rdi.berkeley.edu/agentx-agentbeats) Sprint 3 competition,
@@ -19,7 +19,7 @@ Task Message (from green agent via A2A)
   │
   ▼
 Phase 0 — Setup
-  ├─ Extract exec_url
+  ├─ Extract exec_result
   ├─ Multi-label domain detection (primary + up to 3 secondaries)
   ├─ Build system prompt:
   │    [Base ReAct protocol]
@@ -166,6 +166,7 @@ purple-terminal-agent/
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | required | OpenRouter API key |
 | `MODEL` | `qwen/qwen3-coder-30b-a3b-instruct` | Model via OpenRouter |
+| `PLANNER_MODEL` | Optional | via OpenRouter |
 | `MAX_TURNS` | `30` | Max ReAct turns per task |
 | `PORT` | `9009` | A2A server port |
 | `TASK_INDEX_PATH` | `/app/data/task_index.json` | RAG index location |
@@ -178,10 +179,10 @@ Add these to your GitHub repository secrets:
 
 | Secret | Value |
 |--------|-------|
-| `DOCKERHUB_USERNAME` | `rimodock` |
+| `DOCKERHUB_USERNAME` | `your dockerhub username` |
 | `DOCKERHUB_TOKEN` | your Docker Hub access token |
 
-CI workflow: test → build → push to `docker.io/rimodock/purple-terminal-agent:latest` on every merge to `main`.
+CI workflow: test → build → push to `docker.io/..../purple-terminal-agent:latest` on every merge to `main`.
 
 ---
 
@@ -214,9 +215,9 @@ pytest tests/ -v
 
 ## AgentBeats Submission
 
-1. Push to `main` → CI builds and pushes `rimodock/purple-terminal-agent:latest`
+1. Push to `main` → CI builds and pushes `.../purple-terminal-agent:latest`
 2. Go to [agentbeats.dev/register-agent](https://agentbeats.dev/register-agent)
-3. Select **Purple**, enter image: `docker.io/rimodock/purple-terminal-agent:latest`
+3. Select **Purple**, enter image: `docker.io/.../purple-terminal-agent:latest`
 4. Submit the `amber-manifest.json5` URL
 5. Go to [Terminal Bench 2.0 Quick Submit](https://agentbeats.dev/agentbeater/terminal-bench-2-0/submit)
 6. Select your agent, add secret `OPENROUTER_API_KEY`
