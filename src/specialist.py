@@ -26,7 +26,7 @@ _ANCHORS: dict[str, list[str]] = {
     "system":   ["systemctl", "journalctl", "cron", "chmod", "chown", "mount", "fstab", "ulimit"],
     "text":     ["jq", "awk", "sed", "grep", "regex", "csv", "json"],
     "security": ["openssl", "secret", "vulnerability", "hash", "crack", "leak", "certificate"],
-    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "caffe", "iteration", "solver", "inference", "batch"],
+    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "caffe", "iteration", "cnn", "solver", "inference", "batch"],
     "data":     ["pandas", "numpy", "dataframe", "rscript", "scipy", "bayesian", "pgmpy", "statsmodel"],
 }
 
