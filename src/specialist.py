@@ -472,15 +472,12 @@ _FULL["security"] = """
 - What are the binary's entry points and its imported libraries?
 - Am I modifying the binary, or just extracting information from it?
 
-### Process Example (Find hardcoded secret)
-Thought: The task asks to find a password checked by this executable. Let's start with static analysis.
-Command: file vault.bin
-Observation: ELF 64-bit LSB executable, dynamically linked
-Thought: Let's check for obvious hardcoded strings before using a debugger.
-Command: strings vault.bin | grep -i "pass\\|key\\|flag" -B 2 -A 2
-Observation: Enter password: / FLAG{s3cr3t_r3v3rs1ng} / Access denied
-Thought: I see a string that looks like the flag. Let's verify by passing it to the binary.
-Command: ./vault.bin "FLAG{s3cr3t_r3v3rs1ng}"
+### Process Example: Forensic Secret Recovery
+Thought: The task asks to recover a secret deleted from a Git repo. I must not run 'git prune' or 'git gc' as it might destroy reachable objects. I will use the reflog to find the commit hash before the deletion.
+Command: git reflog > /tmp/git_logs 2>&1; git log --patch -n 5 >> /tmp/git_logs 2>&1; head -n 20 /tmp/git_logs; echo "... [truncated] ..."; tail -n 20 /tmp/git_logs
+Observation: ... HEAD@{1}: commit: Removing accidental API_KEY leak ... - API_KEY=s3cr3t_v4ult_123
+Thought: The key was in the reflog. I will now export it and run the test harness to verify.
+Command: export API_KEY=s3cr3t_v4ult_123 && bash tests/test.sh
 [verify expected state before proceeding]
 """
 _SHORT["security"] = """
@@ -563,15 +560,21 @@ _FULL["data"] = """
 - Does this task require recovering the *structure* (DAG) or the *parameters* (CPDs)?[cite: 4].
 - Have I limited the sampling iterations to survive the 30s turn budget?[cite: 6].
 
-### Process Example (Process large data safely)
-Thought: The task asks for the average of the 'price' column in a large CSV. I should check file size first.
-Command: ls -lh sales.csv
-Observation: 4.5G sales.csv
-Thought: It's 4.5GB, too large for a basic pandas read_csv on limited memory. I'll check the structure.
-Command: head -n 3 sales.csv
-Observation: id,date,price,store\n1,2024-01-01,15.99,A\n2,2024-01-01,NA,B
-Thought: There are headers and text 'NA' values. I can use awk to sum it efficiently without memory issues.
-Command: awk -F',' 'NR>1 && $3!="NA" {sum+=$3; count++} END {print sum/count}' sales.csv
+### Process Example: Bayesian DAG Recovery
+Thought: Task requires recovering a DAG from a CSV. I'll verify 'pgmpy' is available and check the data scale.
+Command: ls -lh *.csv && python3 -c "import pgmpy; print('READY')"[cite: 5]
+Observation: bn_sample_10k.csv (844K), READY[cite: 3]
+Thought: The data is small. I will use a deterministic HillClimbSearch with BicScore. I'll write the full script at once to save turns.
+Command: 
+cat > solution.py << 'EOF'
+import pandas as pd
+from pgmpy.estimators import HillClimbSearch, BicScore
+data = pd.read_csv('bn_sample_10k.csv')
+est = HillClimbSearch(data)
+model = est.estimate(scoring_method=BicScore(data))
+print(sorted(model.edges()))
+EOF
+python3 solution.py 2>&1 | tail -n 10
 [verify output format meets requirements]
 """
 _SHORT["data"] = """
