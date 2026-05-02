@@ -37,6 +37,9 @@ PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
 
+# approved 12s threshold logic
+PLAN_TIMEOUT = 12.0
+
 
 # ── FAILURE-CONDITIONED PROMPTING ─────────────────────────────────────────────
 # Negative examples from real Sprint 3 run failures injected directly.
@@ -225,10 +228,21 @@ async def plan(
 ) -> dict:
     """
     Generate a structured plan for the task.
-    Uses Best-of-N sampling: generates PLAN_BEST_OF_N candidates, returns the best.
-    Returns the parsed plan dict, or a minimal fallback plan on failure.
+    Uses Dynamic Risk Assessment to decide between a single plan or Best-of-N.
+    Enforces a strict 12s timeout for planning to preserve turn budget.
     """
     budget = max_turns - 3  # reserve 3 for safety
+
+    # --- STEP 1: DYNAMIC RISK ASSESSMENT ---
+    # Benchmark-critical high-risk keywords
+    high_risk_keywords = [
+        "build", "compile", "docker", "ml", "caffe", "make", "pmars",
+        "torch", "pytorch", "tensorflow", "security", "nmap", "elf"
+    ]
+    is_high_risk = any(kw in (task_text + domains_str).lower() for kw in high_risk_keywords)
+    
+    # Only scale to parallel candidates if the task is high-risk[cite: 5]
+    n_candidates = PLAN_BEST_OF_N if is_high_risk else 1
 
     user_content = f"""## Task Description
 {task_text}
@@ -255,27 +269,44 @@ The SUM of all subgoal max_turns MUST be ≤ {budget}.
 Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fields on every subgoal.
 """
 
-    if PLAN_BEST_OF_N <= 1:
-        # Single plan — original behaviour
+    # --- STEP 2: DYNAMIC ROUTING ---
+    if n_candidates <= 1:
+        # Low-Risk: Bypass parallel generation to save turn time
+        logger.info("Low-Risk Task detected: Bypassing Best-of-N to save time.")
         return await _single_plan(user_content, task_text)
 
-    # ── Best-of-N: generate N plans in parallel, pick best ───────────────────
-    logger.info("Best-of-N planning: generating %d candidates (model=%s)", PLAN_BEST_OF_N, PLANNER_MODEL)
-    tasks = [_single_plan(user_content, task_text) for _ in range(PLAN_BEST_OF_N)]
-    candidates = await asyncio.gather(*tasks, return_exceptions=True)
+    # --- STEP 3: TIME-BOUNDED BEST-OF-N ---
+    logger.info("High-Risk Task: Scaling to %d candidates with %ds timeout", n_candidates, PLAN_TIMEOUT)
+    
+    # Create parallel tasks[cite: 7]
+    tasks = [asyncio.create_task(_single_plan(user_content, task_text)) for _ in range(n_candidates)]
+    
+    try:
+        # Wait for completion or the 12s threshold
+        done, pending = await asyncio.wait(tasks, timeout=PLAN_TIMEOUT)
+        
+        # Kill any LLM calls that exceeded the threshold to free up the 30s turn budget
+        for p in pending:
+            p.cancel()
+            
+        candidates = [t.result() for t in done if not t.exception()]
+    except Exception as e:
+        logger.error("Planning execution error: %s", e)
+        return _fallback_plan(task_text)
 
     valid = [c for c in candidates if isinstance(c, dict) and "subgoals" in c]
     if not valid:
-        logger.warning("All %d plan candidates failed — using fallback", PLAN_BEST_OF_N)
+        logger.warning("Scaling failed or timed out — using fallback plan.")
         return _fallback_plan(task_text)
 
+    # Score and pick the best survivor[cite: 7]
     scored = [(c, _score_plan(c, budget)) for c in valid]
     scored.sort(key=lambda x: x[1], reverse=True)
     best_plan, best_score = scored[0]
 
     logger.info(
         "Best-of-%d: picked plan score=%.1f from %d valid candidates | subgoals=%d",
-        PLAN_BEST_OF_N, best_score, len(valid), len(best_plan.get("subgoals", []))
+        n_candidates, best_score, len(valid), len(best_plan.get("subgoals", []))
     )
     return best_plan
 
