@@ -91,10 +91,10 @@ Your primary goal is to REPAIR commands so they survive a strict 30-second timeo
    - If a command is just `apt-get update`, REVISE to `echo "Skipping update"`.
    - Combined `update && install` MUST be split; remove the update and only keep the install.
 
-2. SMART OUTPUT MANAGEMENT (Head-Tail Sandwich):
-   - For commands producing long logs (e.g., `make`, `gcc`, `python train.py`, `pytest`, `nmap`), REVISE to see the start and the end of the output.
-   - Use this exact format: `(COMMAND) > /tmp/out 2>&1; head -n 20 /tmp/out; echo "... [truncated] ..."; tail -n 30 /tmp/out`
-   - This ensures the agent sees if the build started correctly and why it failed at the end.
+2. SMART OUTPUT MANAGEMENT (The 50-Line Rule):
+   - Any command likely to produce volume (make, train, log, find) MUST be truncated.
+   - REVISE to: `(COMMAND) > /tmp/out 2>&1; head -n 15 /tmp/out; echo "... [truncated] ..."; tail -n 15 /tmp/out`
+   - Strictly limit total output to 30 lines. Large buffers cause "Client Request" timeouts.[cite: 8]
 
 3. INSTALLATION STRATEGY:
    - FRAGMENTATION: If installing multiple large packages (e.g., pandas+pgmpy, torch, tensorflow), REVISE to install only ONE package per turn.

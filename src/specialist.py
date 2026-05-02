@@ -21,12 +21,12 @@ _ANCHORS: dict[str, list[str]] = {
     "docker":   ["docker", "dockerfile", "kubernetes", "container"],
     "python":   ["python", "python3", "pip", "virtualenv", "venv"],
     "database": ["sqlite", "sqlite3", "postgresql", "postgres", "psql", "mysql"],
-    "network":  ["curl", "wget", "nginx", "apache", "http", "https"],
+    "network":  ["nginx", "apache", "http", "https", "port", "curl", "wget", "endpoint", "server"],
     "build":    ["makefile", "cmake", "cargo", "gcc", "clang", "compile", "build", "pmars"],
-    "system":   ["systemctl", "crontab", "systemd", "chmod", "cron"],
+    "system":   ["systemctl", "journalctl", "cron", "chmod", "chown", "mount", "fstab", "ulimit"],
     "text":     ["jq", "awk", "sed", "grep", "regex", "csv", "json"],
     "security": ["openssl", "secret", "vulnerability", "hash", "crack", "leak", "certificate"],
-    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "caffe", "iteration", "solver"],
+    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "caffe", "iteration", "solver", "inference", "batch"],
     "data":     ["pandas", "numpy", "dataframe", "rscript", "scipy", "bayesian", "pgmpy", "statsmodel"],
 }
 
@@ -65,8 +65,8 @@ _DOMAIN_KEYWORDS: dict[str, list[str]] = {
                  "nmap", "gdb", "objdump", "strings", "strace", "malware", "payload", 
                  "encrypt", "decrypt", "cipher", "pcap", "wireshark", "secret", "leak"],
     "ml":       ["machine learning", "ml", "model", "train", "inference", "dataset", "neural", 
-                 "network", "tensor", "gpu", "cuda", "pytorch", "torch", "tensorflow", 
-                 "huggingface", "transformers", "weights", "epoch", "batch", "loss", 
+                 "network", "tensor", "gpu", "cuda", "pytorch", "torch", "tensorflow", "cnn",
+                 "huggingface", "transformers", "weights", "epoch", "batch", "loss", "tokenization",
                  "caffe", "iteration", "solver", "prototxt", "optimizer", "gradient", "embedding"],
     "data":     ["data", "science", "pandas", "numpy", "scipy", "dataframe", "statistics", 
                  "analysis", "plot", "graph", "matplotlib", "seaborn", "r", "rscript", "stan", 
@@ -340,6 +340,7 @@ _FULL["build"] = """
 - `make` assumes tab indentation — spaces cause "missing separator" error.
 - Parallel build (`-j4`) hides ordering issues that sequential build would catch.
 - CMake out-of-source build: `cmake -B build -S .` then `cmake --build build`.
+- Parallel make -j can spike CPU and cause the environment to hang, triggering a timeout.
 
 ### Reasoning Anchors
 - Have I read the Makefile/CMakeLists.txt before running anything?
@@ -361,6 +362,7 @@ _SHORT["build"] = """
 - Read Makefile before running make — understand targets first.
 - Missing headers need dev packages (`libname-dev`), not just runtime packages.
 - CMake needs out-of-source build directory.
+- For pmars and others, run make -j1 (single-thread). 
 """
 
 # ─── SYSTEM ────────────────────────────────────────────────
@@ -482,7 +484,7 @@ Command: export API_KEY=s3cr3t_v4ult_123 && bash tests/test.sh
 """
 _SHORT["security"] = """
 ### Security & Forensic Pitfalls
-- **Forensic Recovery**: Use `git reflog` and `git log --patch` to find "deleted" secrets or keys in history[cite: 1].
+- **Forensic Recovery**: Use `git reflog` and `git log -n 5 --oneline` to find "deleted" secrets or keys in history. Only use --patch if the secret isn't found in the subject lines.
 - **Static Analysis First**: Run `file`, `ldd`, and `nm -D` before using a debugger to find missing libs or hidden entry points[cite: 3].
 - **Read-Only**: Never run destructive commands like `git prune` or overwrite logs before extracting metadata.
 """
@@ -526,7 +528,7 @@ Command: sed -i 's/max_iter: [0-9]*/max_iter: 5/' ./models/bvlc_reference_caffen
 """
 _SHORT["ml"] = """
 ### ML & Framework Pitfalls
-- **Assume Pre-installed**: Check `/app/caffe` or framework paths first; don't waste 10 turns building from source[cite: 1].
+- **Assume Pre-installed**: Check `/app/caffe` or framework paths first; don't waste 10 turns building from source[cite: 1]. Never import torch or import pgmpy just for a check. Use pip show pgmpy instead—it's nearly instantaneous and doesn't load the library into memory.
 - **Iteration Limits**: Use `sed` to set `max_iter` to the exact required number (e.g., 5) in `.prototxt` or scripts to avoid 30s timeouts[cite: 3].
 - **Resource Check**: Run `nvidia-smi` Turn 1 to verify GPU state before initializing large models[cite: 3].
 """
@@ -588,13 +590,13 @@ _SHORT["data"] = """
 _FULL["generic"] = """
 ## General Terminal Task — Reasoning Scaffold
 
-## Orientation Protocol (MANDATORY Turn 1)
-Prepend your first diagnostic command with structural discovery:
-`pwd && ls -F && ls -F tests/ 2>/dev/null && which gcc make python3 2>/dev/null`[cite: 14]
+## Mandatory Orientation (Turn 1)
+Execute ONLY this lightweight discovery command:
+`pwd && ls -F && ls -F tests/ 2>/dev/null`
 
-1. Ground your plan in the existence of compilers (gcc/make) and tests.
-2. Locate the benchmark verification folder (`tests/`).[cite: 3]
-3. Immediately check for `tests/test.sh` or `tests/test_outputs.py`.[cite: 3]
+1. Ground your plan ONLY in visible files. 
+2. Do NOT check for compilers (gcc/make) until Turn 2.
+3. If `tests/` exists, your next move is to `cat` the test files.
 4. Never assume the environment is empty; look for existing source folders.
 5. Identify the success condition from the task and match it to available tests.[cite: 1, 3]
 
