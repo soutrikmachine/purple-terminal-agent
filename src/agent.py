@@ -296,7 +296,7 @@ class AgentSession:
             #self.messages.append({
              #   "role": "user",
              #  "content": f"🔧 Critic safety note: {critic_note}\n   Original: `{command}`\n   Will execute: `{final_cmd}`"
-            })
+            #})
 
         self.collected_commands.append(final_cmd)
         self.observation_history += f"\n$ {final_cmd}"
