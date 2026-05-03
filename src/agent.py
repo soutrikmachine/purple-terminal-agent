@@ -262,20 +262,53 @@ class AgentSession:
             logger.info("Agent declares done at turn %d — running self-verify", self.turn)
             return await self._handle_done(done_content)
 
-        # ── Extract <command> tag ─────────────────────────────────────────
+        # ── Extract <command> tag (permissive fallback chain) ────────────
         command = _extract_tag(llm_response, "command")
+
         if not command:
-            # Nudge with format reminder, ask again next turn
-            logger.warning("No <command> tag at turn %d — sending format nudge", self.turn)
+            # Fallback 1: code block (```bash...``` or ```...```)
+            cb = re.search(r"```(?:bash|sh|shell)?\s*\n(.*?)\n```", llm_response, re.DOTALL)
+            if cb:
+                command = cb.group(1).strip()
+                logger.info("Extracted command from code block at turn %d", self.turn)
+
+        if not command:
+            # Fallback 2: inline backtick single line  `command`
+            bt = re.search(r"`([^`\n]{3,200})`", llm_response)
+            if bt:
+                cand = bt.group(1).strip()
+                # Only accept if it looks like a shell command
+                if re.match(r"^(python3?|pip|apt|apt-get|git|cat|ls|cd|grep|find|echo|cp|mv|mkdir|rm|curl|wget|tar|make|gcc|bash|sh|timeout|chmod|sed|awk|head|tail|wc|docker|node|ruby|perl|R |rscript|sqlite3|psql|openssl|systemctl|service|nginx|which|dpkg|npm|cargo)\b", cand, re.IGNORECASE):
+                    command = cand
+                    logger.info("Extracted command from backtick at turn %d", self.turn)
+
+        if not command:
+            # Fallback 3: last line that looks like a shell command
+            for line in reversed(llm_response.strip().splitlines()):
+                line = line.strip()
+                if line and re.match(r"^(python3?|pip|apt|apt-get|git|cat|ls|grep|find|echo|cp|mv|mkdir|curl|wget|tar|make|gcc|bash|timeout|sed|awk|sqlite3|openssl|chmod|head|tail|which|dpkg|npm|cargo|R |rscript)\b", line, re.IGNORECASE):
+                    command = line
+                    logger.info("Extracted command from prose line at turn %d: %s", self.turn, line[:60])
+                    break
+
+        if not command:
+            # All extraction methods failed — send targeted format nudge
+            logger.warning("No command found at turn %d — sending format nudge", self.turn)
             nudge = (
-                "Use the required format:\n"
-                "<thought>reasoning</thought>\n"
-                "<command>bash_command</command>\n"
-                "Or <done>summary</done> if the task is fully complete."
+                "⚠️ FORMAT ERROR: Your response did not contain a command.\n\n"
+                "You MUST respond with EXACTLY this format:\n"
+                "<thought>brief reasoning</thought>\n"
+                "<command>the_bash_command_to_run</command>\n\n"
+                "Example:\n"
+                "<thought>I need to check what files exist first.</thought>\n"
+                "<command>ls -la /app</command>\n\n"
+                "Even if you are doing math or analysis, write it as a Python script:\n"
+                "<command>python3 -c \"print(2+2)\"</command>\n\n"
+                "Respond now with the format above. Do NOT explain. Just output the tags."
             )
             self.messages.append({"role": "user", "content": nudge})
-            # Return a diagnostic ls to keep things moving
-            return json.dumps({"kind": "exec_request", "command": "ls -la", "timeout": 300})
+            # Use a minimal diagnostic rather than ls -la — at least learns something
+            return json.dumps({"kind": "exec_request", "command": "echo 'FORMAT_RECOVERY' && ls -la && python3 --version 2>/dev/null", "timeout": 300})
 
         # ── Critic pre-flight ─────────────────────────────────────────────
         current_sg = self.subgoals[min(self.current_sg_idx, len(self.subgoals)-1)] if self.subgoals else {}
@@ -293,10 +326,10 @@ class AgentSession:
         if critic_note:
             logger.info("Critic revised: %s → %s | %s", command[:60], final_cmd[:60], critic_note)
             # Inform LLM the command was revised
-            #self.messages.append({
-             #   "role": "user",
-             #  "content": f"🔧 Critic safety note: {critic_note}\n   Original: `{command}`\n   Will execute: `{final_cmd}`"
-            #})
+            self.messages.append({
+                "role": "user",
+                "content": f"🔧 Critic safety note: {critic_note}\n   Original: `{command}`\n   Will execute: `{final_cmd}`"
+            })
 
         self.collected_commands.append(final_cmd)
         self.observation_history += f"\n$ {final_cmd}"

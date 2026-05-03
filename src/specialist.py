@@ -21,13 +21,16 @@ _ANCHORS: dict[str, list[str]] = {
     "docker":   ["docker", "dockerfile", "kubernetes", "container"],
     "python":   ["python", "python3", "pip", "virtualenv", "venv"],
     "database": ["sqlite", "sqlite3", "postgresql", "postgres", "psql", "mysql"],
-    "network":  ["nginx", "apache", "http", "https", "port", "curl", "wget", "endpoint", "server"],
-    "build":    ["makefile", "cmake", "cargo", "gcc", "clang", "compile", "build", "pmars"],
-    "system":   ["systemctl", "journalctl", "cron", "chmod", "chown", "mount", "fstab", "ulimit"],
+    "network":  ["curl", "wget", "nginx", "apache", "http", "https"],
+    "build":    ["makefile", "cmake", "cargo", "gcc", "clang"],
+    "system":   ["systemctl", "crontab", "systemd", "chmod", "cron"],
     "text":     ["jq", "awk", "sed", "grep", "regex", "csv", "json"],
-    "security": ["openssl", "secret", "vulnerability", "hash", "crack", "leak", "certificate"],
-    "ml":       ["torch", "pytorch", "tensorflow", "keras", "huggingface", "cuda", "caffe", "iteration", "cnn", "solver", "inference", "batch"],
-    "data":     ["pandas", "numpy", "dataframe", "rscript", "scipy", "bayesian", "pgmpy", "statsmodel"],
+    "security": ["xss", "injection", "exploit", "cryptanalysis", "cipher",
+                 "hash", "crack", "payload", "bypass", "vulnerability"],
+    "ml":       ["pytorch", "torch", "tensorflow", "huggingface", "transformers",
+                 "bert", "gpt", "cuda", "fine-tune", "checkpoint", "embedding"],
+    "scientific": ["bayesian", "mcmc", "sampling", "scipy", "numpy", "pandas",
+                   "statistics", "regression", "distribution", "parquet"],
 }
 
 _DOMAIN_KEYWORDS: dict[str, list[str]] = {
@@ -50,27 +53,40 @@ _DOMAIN_KEYWORDS: dict[str, list[str]] = {
                  "server", "client", "request", "response", "download",
                  "fetch", "url", "connect", "ssh", "netcat"],
     "build":    ["make", "makefile", "cmake", "gcc", "clang", "compile",
-                 "compilation", "linker", "autoconf", "configure", "cargo", "pmars",
+                 "compilation", "linker", "autoconf", "configure", "cargo",
                  "npm", "yarn", "webpack", "gradle", "maven", "bazel",
-                 "source", "build-essential", "make install", "binary", "executable"],
+                 "binary", "executable"],
     "system":   ["systemctl", "service", "daemon", "cron", "crontab",
                  "schedule", "permission", "chmod", "chown", "sudo",
                  "process", "signal", "bashrc", "profile", "startup",
-                 "boot", "init", "systemd", "ulimit", "mount", "fstab"], # Added DevOps mount terms
+                 "boot", "init", "systemd", "ulimit"],
     "text":     ["csv", "json", "yaml", "xml", "parse", "extract",
                  "transform", "sed", "awk", "grep", "regex", "jq",
                  "logfile", "format", "convert", "encode", "decode",
                  "column", "delimiter"],
-    "security": ["security", "vulnerability", "exploit", "reverse", "binary", "crack", "hash", 
-                 "nmap", "gdb", "objdump", "strings", "strace", "malware", "payload", 
-                 "encrypt", "decrypt", "cipher", "pcap", "wireshark", "secret", "leak"],
-    "ml":       ["machine learning", "ml", "model", "train", "inference", "dataset", "neural", 
-                 "network", "tensor", "gpu", "cuda", "pytorch", "torch", "tensorflow", "cnn",
-                 "huggingface", "transformers", "weights", "epoch", "batch", "loss", "tokenization",
-                 "caffe", "iteration", "solver", "prototxt", "optimizer", "gradient", "embedding"],
-    "data":     ["data", "science", "pandas", "numpy", "scipy", "dataframe", "statistics", 
-                 "analysis", "plot", "graph", "matplotlib", "seaborn", "r", "rscript", "stan", 
-                 "simulation", "aggregate", "mean", "median", "variance"],
+    "security": ["xss", "injection", "sql injection", "exploit", "payload",
+                 "bypass", "vulnerability", "attack", "cipher", "encrypt",
+                 "decrypt", "hash", "crack", "cryptanalysis", "chosen plaintext",
+                 "differential", "linear", "brute force", "sanitize", "sanitise",
+                 "secret", "credential", "password", "authentication", "jwt",
+                 "token", "session", "csrf", "reverse engineer", "disassemble",
+                 "obfuscate", "malware", "shellcode", "overflow", "memory"],
+    "ml":       ["pytorch", "torch", "tensorflow", "keras", "huggingface",
+                 "transformers", "bert", "gpt", "llm", "model", "training",
+                 "inference", "neural", "deep learning", "cuda", "gpu",
+                 "batch", "epoch", "loss", "gradient", "weights", "checkpoint",
+                 "fine-tune", "finetune", "embedding", "tokenizer", "dataset",
+                 "dataloader", "optimizer", "scheduler", "attention", "forward",
+                 "backward", "autograd", "tensor", "pipeline", "parallelism",
+                 "caffe", "fasttext", "sam", "segment", "diffusion"],
+    "scientific": ["r language", "rscript", "bayesian", "mcmc", "sampling",
+                   "scipy", "numpy", "pandas", "statsmodels", "pgmpy",
+                   "statistics", "statistical", "regression", "correlation",
+                   "distribution", "probability", "prior", "posterior",
+                   "parquet", "arrow", "dask", "feather", "hdf5",
+                   "spectroscopy", "fitting", "optimization", "simulation",
+                   "ode", "pde", "numerical", "scientific", "notebook",
+                   "matplotlib", "seaborn", "plotly", "visualization"],
 }
 
 _THRESHOLD = 2
@@ -134,6 +150,10 @@ _FULL["git"] = """
 - `git branch -a` → all local and remote branches
 - `git stash list` → any stashed work that might matter
 Read ALL output before forming a plan. The task solution depends on actual state.
+
+### TB 2.0 Heuristics
+- **Git Server Permissions:** If configuring a git webserver or shared repository, remember to run `git update-server-info` and ensure the `.git` directory has the correct permissions (`chmod -R 755 .git`).
+- **Multi-branch Operations:** When merging or rebasing across multiple branches, ALWAYS check out the target branch first (`git checkout target`) before performing the operation.
 
 ### Common Failure Modes (understand WHY, not just what to avoid)
 - `git rebase -i` opens $EDITOR interactively → process hangs forever.
@@ -216,6 +236,9 @@ _FULL["python"] = """
 - `python3 -c "import pkg"` → fastest way to test an import
 - Read tracebacks from BOTTOM UP — the root cause is the last line.
 
+### TB 2.0 Heuristics
+- **C/Python Polyglot:** If building C code to be used in Python (e.g., `ctypes` or `cffi`), you MUST compile the C code as a shared object library using `gcc -shared -fPIC -o libname.so source.c`.
+
 ### Common Failure Modes
 - ImportError: package not installed, wrong venv, or wrong python binary.
 - SyntaxError in Python 3 from Python 2 syntax: `print "x"` → `print("x")`
@@ -262,6 +285,7 @@ _FULL["database"] = """
 - Trying to connect postgres before service is running: check `pg_isready` first.
 - Missing semicolons in multi-statement SQL → silent partial execution.
 - Overwriting existing data when task says append → read existing state first.
+- SQLite TRUNCATE Trap: SQLite does NOT support the `TRUNCATE TABLE` command. To clear a table in SQLite, you MUST use `DELETE FROM tablename;`.
 
 ### Reasoning Anchors
 - What database engine is this? (SQLite/Postgres/MySQL — different syntax)
@@ -295,6 +319,9 @@ _FULL["network"] = """
 - `curl -sv url 2>&1 | head -40` → full HTTP negotiation including redirects
 - `cat /etc/resolv.conf` → DNS config if resolution is failing
 - `env | grep -i proxy` → proxy settings that may interfere
+
+### TB 2.0 Algorithmic Heuristics
+- **Service Verification:** Never declare `<done>` just because a service start command returned exit code 0. You MUST verify the service is bound to the port using `ss -tlnp` and test the endpoint with `curl -v localhost:PORT`.
 
 ### Common Failure Modes
 - Missing `-L` flag: curl doesn't follow redirects by default. `curl -L url`.
@@ -334,10 +361,10 @@ _FULL["build"] = """
 - `make target 2>&1 | head -30` → first error is usually the root cause
 - `ldd binary` → check shared library dependencies after build
 
-### TB 2.0 Heuristics
-- You have 300s to build. You CAN use `make -j4` to speed up compilation.
-- If a build fails with "missing header," you have the time to run `apt-cache search <name>` and install the exact `-dev` package.
-- ALWAYS use the Head-Tail log sandwich for `make` commands so you don't flood the terminal buffer but still see the GCC errors at the end.
+### TB 2.0 Algorithmic Heuristics
+- **C/C++ Math Linking:** If compiling C/C++ files manually (without a Makefile), ALWAYS append `-lm` to the end of the `gcc` command to link the math library.
+- **Custom Compilers:** If a specific compiler is required (e.g., `pmars` for Corewars), run `find / -name "pmars" -type f -executable 2>/dev/null` to locate it before attempting to build.
+- **Emulator Builds:** If compiling inside an emulator (QEMU) or a highly constrained environment, NEVER use `make -j4`. Use a single thread (`make`) to prevent Out-Of-Memory (OOM) crashes.
 
 ### Common Failure Modes
 - Missing header: `-I/path/to/include` needed. Check what package provides it.
@@ -345,7 +372,6 @@ _FULL["build"] = """
 - `make` assumes tab indentation — spaces cause "missing separator" error.
 - Parallel build (`-j4`) hides ordering issues that sequential build would catch.
 - CMake out-of-source build: `cmake -B build -S .` then `cmake --build build`.
-- Parallel make -j can spike CPU and cause the environment to hang, triggering a timeout.
 
 ### Reasoning Anchors
 - Have I read the Makefile/CMakeLists.txt before running anything?
@@ -367,7 +393,6 @@ _SHORT["build"] = """
 - Read Makefile before running make — understand targets first.
 - Missing headers need dev packages (`libname-dev`), not just runtime packages.
 - CMake needs out-of-source build directory.
-- For pmars and others, run make -j1 (single-thread). You CAN use `make -j4` to speed up compilation.
 """
 
 # ─── SYSTEM ────────────────────────────────────────────────
@@ -408,6 +433,7 @@ _SHORT["system"] = """
 - systemd may not be running in containers — verify before systemctl.
 - Always `crontab -l` before adding jobs — don't overwrite existing ones.
 - Cron scripts need absolute paths and executable permissions.
+- **Alpine/QEMU:** When interacting with Alpine Linux via SSH or QEMU, ALWAYS use `apk add --no-cache` to prevent interactive hangs.
 """
 
 # ─── TEXT ──────────────────────────────────────────────────
@@ -448,195 +474,284 @@ _SHORT["text"] = """
 - CSV with quoted commas breaks simple `cut -d,` — use Python or awk FPAT.
 """
 
-# ─── SECURITY ──────────────────────────────────────────────
-_FULL["security"] = """
-## Security & Reverse Engineering Specialist — Reasoning Scaffold
-
-### How to Diagnose Security State
-- `file target_bin` and `ldd target_bin` → determine architecture, format, and dependencies
-- `strings target_bin | head -50` → extract readable text, search for hardcoded flags/secrets
-- `strace -c ./target_bin` → observe system calls, signals, and file reads during execution
-- `gdb -batch -ex "info functions" target_bin` → list available symbols before stepping through code
-- `git log --graph --oneline --all --reflog` → (CRITICAL) Forensic check for deleted commits or "lost" secrets in `git-leak-recovery` tasks[cite: 1].
-- `objdump -s -j .rodata target_bin` → Dump read-only data sections to find hardcoded string constants without a debugger.
-
-### Common Failure Modes
-- Jumping into GDB/disassembly before running basic static analysis (`strings`, `file`, `binwalk`).
-- Executing untrusted binaries blindly without isolating them or using `strace` to monitor side-effects.
-- Endianness mistakes: Patching or reading hex values backward (little-endian vs big-endian).
-- Overlooking file permissions/SUID bits when searching for privilege escalation paths.
-
-### TB 2.0 Heuristics
-- **Read-Only First**: Never modify logs or database files before hashing them or checking their metadata.
-- **Dependency Missing**: If a binary errors with "libX.so not found," search for it using `apt-cache search` but NEVER run `apt-get update`. Install the specific lib directly.
-- **Secret Recovery**: On `vulnerable-secret` or `hash-crack` tasks, assume the secret is either in the environment variables or buried in a previous git commit object reachable via `reflog`[cite: 1].
-
-### Reasoning Anchors
-- Have I extracted basic metadata (`strings`, `file`) before attempting deep analysis?
-- Am I analyzing the *current* filesystem or the *history* of the repository?
-- What inputs is the binary expecting? (arguments, environment variables, specific files)
-- If decrypting/cracking, do I have the correct hash format for tools like `hashcat` or `john`?
-- What are the binary's entry points and its imported libraries?
-- Am I modifying the binary, or just extracting information from it?
-
-### Process Example: Forensic Secret Recovery
-Thought: The task asks to recover a secret deleted from a Git repo. I must not run 'git prune' or 'git gc' as it might destroy reachable objects. I will use the reflog to find the commit hash before the deletion.
-Command: git reflog > /tmp/git_logs 2>&1; git log --patch -n 5 >> /tmp/git_logs 2>&1; head -n 20 /tmp/git_logs; echo "... [truncated] ..."; tail -n 40 /tmp/git_logs
-Observation: ... HEAD@{1}: commit: Removing accidental API_KEY leak ... - API_KEY=s3cr3t_v4ult_123
-Thought: The key was in the reflog. I will now export it and run the test harness to verify.
-Command: export API_KEY=s3cr3t_v4ult_123 && bash tests/test.sh
-[verify expected state before proceeding]
-"""
-_SHORT["security"] = """
-### Security & Forensic Pitfalls
-- **Forensic Recovery**: Use `git reflog` and `git log -n 5 --oneline` to find "deleted" secrets or keys in history. Only use --patch if the secret isn't found in the subject lines.
-- **Static Analysis First**: Run `file`, `ldd`, and `nm -D` before using a debugger to find missing libs or hidden entry points[cite: 3].
-- **Read-Only**: Never run destructive commands like `git prune` or overwrite logs before extracting metadata.
-"""
-
-# ─── MACHINE LEARNING (ML) ─────────────────────────────────
-_FULL["ml"] = """
-## Machine Learning Specialist — Reasoning Scaffold
-
-### How to Diagnose ML State
-- `nvidia-smi` → Immediate verification of GPU state and CUDA compatibility.
-- `cat *.prototxt` → For Caffe tasks, inspect the `solver` and `train_test` files for paths and layer names[cite: 3].
-- `ls -F /app/caffe` → Assume frameworks are pre-compiled in `/app`. Do NOT attempt to build from scratch[cite: 1].
-- `head -n 5 data.jsonl` → verify expected data structures before initializing training loops
-
-### Common Failure Modes
-- **CUDA Out of Memory (OOM)**: Batch size too large, or accumulating gradients inside loops without `item()`/`detach()`.
-- **Device Mismatch**: `Expected all tensors to be on the same device` (e.g., model on GPU, data on CPU).
-- **Shape Mismatch**: `RuntimeError: size mismatch` in matrix operations. Print `tensor.shape` to debug.
-- Loading the entire dataset into memory at once rather than using data loaders/chunking.
-
-### TB 2.0 Heuristics
-- **The Solver Hack**: For tasks requiring "exactly N iterations," find the `solver.prototxt` and use `sed` to set `max_iter: N`, `display: 1`, and `snapshot: 0`. This prevents huge log files and long training hangs[cite: 3].
-- **Caffe Binary Paths**: If `caffe` command is missing, look for it in `/app/caffe/build/tools/caffe` or `/usr/local/bin/caffe`[cite: 3].
-- **OOM Management**: If training crashes with "Out of Memory," use `sed` to halve the `batch_size` in the `.prototxt` files before restarting[cite: 5].
-- **Safe Installs**: You have the time to `pip install torch` or `transformers` if the task requires it. Just ensure you append `> /tmp/pip.log 2>&1; tail -n 10 /tmp/pip.log` so the progress bars don't crash the JSON parser.
-- **Iteration Limits**: Even with 300s, do not run models for infinite epochs. Use `sed` to cap `max_iter` or `epochs` to the minimum required to prove success.
-
-### Reasoning Anchors
-- Does this task require a GPU, and is it accessible in the container environment?
-- Are the input tensor shapes aligned with the model's expected input dimensions?
-- Are both the model and the data tensors on the correct `device`?
-- Am I using `with torch.no_grad():` during inference to prevent OOM errors?
-- Have I located the framework installation and pretrained weights?
-- Is the dataset local, or do I need to fetch it using `wget`?
-
-### Process Example (Modify Caffe iterations)
-Thought: I need to train for exactly 5 iterations. I will find the solver file and modify it using sed to ensure it stops exactly when the verifier expects.
-Command: find . -name "*solver.prototxt*"
-Observation: ./models/bvlc_reference_caffenet/solver.prototxt
-Command: sed -i 's/max_iter: [0-9]*/max_iter: 5/' ./models/bvlc_reference_caffenet/solver.prototxt
-[verify change before running caffe train]
-"""
-_SHORT["ml"] = """
-### ML & Framework Pitfalls
-- **Assume Pre-installed**: Check `/app/caffe` or framework paths first; don't waste 10 turns building from source[cite: 1]. Never import torch or import pgmpy just for a check. Use pip show pgmpy instead—it's nearly instantaneous and doesn't load the library into memory.
-**Iteration Limits**: Even with 300s, do not run models for infinite epochs. Use `sed` to cap `max_iter` or `epochs` to the minimum required to prove success.
-- **Resource Check**: Run `nvidia-smi` Turn 1 to verify GPU state before initializing large models[cite: 3].
-"""
-
-# ─── DATA SCIENCE / SCIENTIFIC COMPUTING ───────────────────
-_FULL["data"] = """
-## Data Science & Scientific Computing Specialist — Reasoning Scaffold
-
-### How to Diagnose Data State
-- `python3 -c "import pgmpy; print('OK')"` → Verify the specialized Bayesian network library is available[cite: 4].
-- `head -n 1 data.csv` → Quickly inspect column headers without loading a 1GB+ file[cite: 5].
-- `grep -l "model" *.stan` → Locate the Stan probabilistic model definition file[cite: 6].
-
-### Common Failure Modes
-- **Memory Limits**: Using `pd.read_csv` on a 10GB file causes an OOM kill. Use `chunksize`, or bash (`awk`/`sed`).
-- **Silent NaNs**: Mathematical operations propagating NaNs, resulting in broken aggregate statistics.
-- **SettingWithCopyWarning**: Modifying a slice of a pandas DataFrame silently fails. Use `.copy()` or `.loc`.
-- **Language Nuances**: 1-based indexing in R vs 0-based in Python. Easy to off-by-one when translating scripts.
-- Type errors in CSVs: A single string "NA" in a numeric column turns the entire column into an object type.
-
-### TB 2.0 Heuristics
-- **Sampling Safety**: For `mcmc-sampling-stan` or `rstan` tasks, ALWAYS set `chains=1, iter=100, warmup=50` in the script. 
-- **pgmpy Estimators**: For DAG recovery (e.g., `bn-fit-modify`), use `pgmpy.estimators.HillClimbSearch` with `BicScore` for deterministic recovery[cite: 4].
-- **Chunking**: For CSV processing, use `pandas.read_csv(chunksize=...)` or `awk` to prevent the container from OOMing on large dataset samples[cite: 5].
-
-### Reasoning Anchors
-- How large is the dataset? (Determines if I use pandas, chunking, or bash text tools).
-- Have I checked for missing values, malformed rows, or unexpected delimiters?
-- Is the script failing on type coercion? (Always check `.dtypes`).
-- Am I using the correct language ecosystem expected by the task? (R vs Python).
-- Does this task require recovering the *structure* (DAG) or the *parameters* (CPDs)?[cite: 4].
-- Have I limited the sampling iterations to survive the 300s turn budget?[cite: 6].
-
-### Process Example: Bayesian DAG Recovery
-Thought: Task requires recovering a DAG from a CSV. I'll verify 'pgmpy' is available and check the data scale.
-Command: ls -lh *.csv && python3 -c "import pgmpy; print('READY')"[cite: 5]
-Observation: bn_sample_10k.csv (844K), READY[cite: 3]
-Thought: The data is small. I will use a deterministic HillClimbSearch with BicScore. I'll write the full script at once to save turns.
-Command: 
-cat > solution.py << 'EOF'
-import pandas as pd
-from pgmpy.estimators import HillClimbSearch, BicScore
-data = pd.read_csv('bn_sample_10k.csv')
-est = HillClimbSearch(data)
-model = est.estimate(scoring_method=BicScore(data))
-print(sorted(model.edges()))
-EOF
-python3 solution.py 2>&1 | tail -n 40
-[verify output format meets requirements]
-"""
-_SHORT["data"] = """
-### Data & Bayesian Pitfalls
-- **Sampling Safety**: For Stan/MCMC tasks, you can set `chains=3` and `iter=100` to survive the 300s turn limit[cite: 1, 6].
-- **Memory Management**: Check CSV scale with `ls -lh` first; use `nrows=100` for recon to avoid OOM hangs[cite: 5].
-- **Deterministic DAGs**: Use `HillClimbSearch` with `BicScore` in pgmpy for faster, more reliable benchmark recovery[cite: 6].
-"""
-
 # ─── GENERIC ───────────────────────────────────────────────
 _FULL["generic"] = """
 ## General Terminal Task — Reasoning Scaffold
 
-## Mandatory Orientation (Turn 1)
-`pwd && find . -maxdepth 2 -type d -name "tests" 2>/dev/null && ls -F`
+### Universal Orientation Protocol (always start here)
+1. `pwd && ls -la` — where am I, what's here
+2. `find . -maxdepth 2 -type f | sort` — full file inventory
+3. Read any README, task instructions, or config files present
+4. Identify the exact success condition from the task description
+5. Plan sub-goals before issuing any modifying command
 
-1. This locates the test harness safely without deep recursion.
-2. If `tests/` is found, Turn 2 MUST be `cat tests/test.sh` to read the exact success conditions.
-3. Ground your plan ONLY in visible files. 
-4. Never assume the environment is empty; look for existing source folders.
-5. Identify the success condition from the task and match it to available tests.[cite: 1, 3]
+### Diagnostic Mindset
+- What is the CURRENT state? (explore before acting)
+- What is the DESIRED state? (re-read task if unclear)
+- What is the SMALLEST change that gets from current to desired?
+- How will I VERIFY the change worked?
 
-### Diagnostic & Verification Mindset
-- **Grounding**: What is the CURRENT state? Use the turn 1 output to plan. (Explore with `cat`, `ls`, and `ss` before acting).[cite: 1, 3]
-- **The Harness**: The `tests/` directory contains the "answer key." Run it early to see what is currently failing.
-- **Baseline**: If `tests/test.sh` exists, run it before your first implementation command to see the error.[cite: 3]
-- **Minimalism**: What is the SMALLEST change that satisfies the `test.sh` requirements?[cite: 1]
-- **Proof**: A task is NOT done until the internal verifier or manual check confirms the state change.
+### TB 2.0 Algorithmic Heuristics
+- **Vision/Image Tasks:** Do NOT attempt to write Python scripts for raw pixel analysis or install heavy OCR libraries (Tesseract/EasyOCR). If the task requires understanding an image, convert the image to base64 (`base64 -w 0 image.png > out.txt`) and include the string in your reasoning thought process so your multimodal vision model can read it.
 
 ### Common Cross-Domain Failures
-- **Premature Completion**: Declaring `<done>` before running the provided benchmark scripts.[cite: 3]
-- **Silent Failures**: Assuming a command worked because it had no output (always verify with `cat` or `ls`).[cite: 1]
-- **Path Blindness**: Assuming `tests/` is in the root; always use `find` to locate the test suite.[cite: 3]
-- **Timeout Neglect**: Forgetting that every command has a hard 300s limit (avoid long `apt` or `pip` chains).[cite: 2]
+- Assuming file paths without checking: always `ls` first
+- Running commands as root when task requires specific user (check `id`)
+- Modifying files that shouldn't be touched (read task constraints carefully)
+- Declaring done without verifying the actual end state
 
 ### Reasoning Anchors
-- Have I located and read the benchmark's `test.sh` or `test_outputs.py`?[cite: 3]
-- Does my current plan address the specific failures reported by the test suite?[cite: 3]
-- What would the evaluator check? (Think backwards from the success script).[cite: 1]
-- Is there a simpler approach that bypasses complex dependencies?[cite: 1]
-
-### Process Example (Rigorous Verification)
-Thought: Task says to fix the configuration. I see a `tests/` directory. I should check the current test state first.
-Command: ls -F tests/
-Observation: test.sh*  test_outputs.py
-Thought: I will run the existing test to identify exactly what is broken.
-Command: bash tests/test.sh
-Observation: FAILED: config key 'port' expected 8080, found 80
-Thought: The test tells me exactly what to fix. I will update the config and then re-run the test.
-Command: sed -i 's/port: 80/port: 8080/' config.yaml
-Command: bash tests/test.sh
-[verify "PASSED" appears before declaring done]
+- Have I re-read the task description recently?
+- Is my current approach actually working toward the stated goal?
+- What would the verifier check? (think backwards from success)
+- Are there simpler approaches I haven't considered?
 """
 _SHORT["generic"] = ""  # Not used as secondary
+
+# ─── SECURITY ──────────────────────────────────────────────
+_FULL["security"] = """
+## Security Specialist — Reasoning Scaffold
+
+### How to Diagnose the Security Environment
+- `cat /app/filter.py` or the relevant script FIRST — understand what it does before trying to bypass
+- `file /app/*.py /app/*.c /app/*.js 2>/dev/null` → identify what code is present
+- `strings binary | grep -iE "key|secret|password|token"` → embedded secrets in binaries
+- `git log --all --oneline` + `git diff SHA1 SHA2` → find removed secrets in history
+- `nm binary` or `objdump -d binary | head -100` → understand binary structure
+
+### TB 2.0 Algorithmic Heuristics
+- **ELF Analysis:** If asked to analyze an ELF or binary file, NEVER try to `cat` or execute it blindly. Use `readelf -a <file>` to extract headers and sections, or `objdump -d <file>` for disassembly.
+
+### Task Archetypes and Approaches
+
+**XSS / HTML filter bypass** (`break-filter-js-from-html`):
+- Read the filter CAREFULLY — understand exactly what it blocks and what it misses
+- Think about encoding bypasses: HTML entities, URL encoding, Unicode, case variations
+- Think about event handler attributes: `onerror`, `onload`, `onfocus`, `onmouseover`
+- Think about SVG, MathML, template tags, CSS expressions — non-script JS execution vectors
+- Test: `python3 /app/filter.py /app/out.html` then check what survives
+- NEVER assume the bypass — test it against the actual filter
+
+**Cryptanalysis** (`feal-linear-cryptanalysis`, `feal-differential-cryptanalysis`):
+- Read the cipher implementation COMPLETELY before writing attack code
+- Write the attack as a Python script — express mathematical operations as code, NOT prose
+- Differential: collect (plaintext, ciphertext) pairs, find key bits from XOR differentials
+- Linear: collect many pairs, build linear approximations, recover key bits by majority vote
+- Test with known values first: verify cipher encryption/decryption before the attack
+- Key workflow: `cat /app/feal.c` → understand rounds → write attack.py → test on small examples
+
+**Hash cracking** (`crack-7z-hash`):
+- `hashcat --help | grep 7z` or `john --list=formats | grep 7z` → find the right format
+- Extract hash: `7z2john archive.7z > hash.txt` (install with `pip install 7z2john`)
+- `hashcat -m 11600 hash.txt wordlist.txt` or `john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt`
+- Common wordlists: `/usr/share/wordlists/`, `/usr/share/dict/words`
+
+**Secret sanitization** (`sanitize-git-repo`, `git-leak-recovery`):
+- `git log --all --full-history --diff-filter=D -- "*.env" "*.key" "*secret*"` → find deleted files
+- `git grep -E "secret|password|api_key" $(git log --all --pretty=%H)` → search all history
+- BFG Repo Cleaner: faster than `git filter-branch` for removing secrets
+- Always verify with `git log --all --oneline` after cleanup
+
+**Code vulnerability fixing** (`fix-code-vulnerability`, `vulnerable-secret`):
+- `grep -rn -E "eval|exec|system|popen|subprocess" /app/` → find dangerous calls
+- `grep -rn -E "TODO|FIXME|password|secret|api_key" /app/` → find hardcoded secrets
+- Read the existing code COMPLETELY before patching — understand context
+- Test the fix: re-run the test harness if one exists
+
+### Reasoning Anchors
+- Have I read the target code/binary COMPLETELY before attempting the attack/fix?
+- For filter bypass: have I tested my payload against the ACTUAL filter, not my mental model?
+- For cryptanalysis: am I expressing the attack as EXECUTABLE CODE, not prose analysis?
+- For hash cracking: do I know the EXACT hash format before choosing a tool?
+- Would the task verifier accept my output format? (check exact expected file paths/formats)
+
+### Process Example (FEAL cryptanalysis)
+Thought: Task asks for chosen plaintext attack. Read cipher implementation first.
+Command: cat /app/feal.c
+Thought: FEAL-4 with 4 rounds. Write attack script targeting key[5] via differential pairs.
+Command: python3 << 'EOF'
+# Quick sanity check: encrypt known plaintext
+import subprocess
+result = subprocess.run(['python3', '-c', 'import sys; sys.path.insert(0,"/app"); from feal import encrypt; print(encrypt(b"\\x00"*8, [0]*6))'], capture_output=True, text=True)
+print(result.stdout, result.stderr)
+EOF
+Thought: Cipher verified. Now write full differential attack.
+Command: cat > /app/attack.py << 'SCRIPT'
+# Full differential attack code here
+SCRIPT
+Command: python3 /app/attack.py
+[Verify key[5] value matches expected]
+"""
+_SHORT["security"] = """
+### Security Pitfalls (secondary domain awareness)
+- For filter bypasses: test against the ACTUAL filter, not assumptions about what it blocks.
+- For cryptanalysis: write the attack as Python code — mathematical prose without <command> does nothing.
+- For secret removal: always `git log --all --oneline` BEFORE and AFTER to verify cleanup.
+- For code vulnerabilities: read the FULL code before patching — don't patch blindly.
+"""
+
+# ─── ML ────────────────────────────────────────────────────
+_FULL["ml"] = """
+## Machine Learning Specialist — Reasoning Scaffold
+
+### How to Diagnose the ML Environment
+- `python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())"` → PyTorch + GPU
+- `python3 -c "import transformers; print(transformers.__version__)"` → HuggingFace
+- `nvidia-smi 2>/dev/null || echo 'No GPU'` → GPU availability
+- `pip list 2>/dev/null | grep -E "torch|tensorflow|transformers|numpy"` → installed ML stack
+- `ls -lh /app/*.pt /app/*.pth /app/*.ckpt /app/*.bin 2>/dev/null` → existing model files
+- `ls -lh /app/data/ /app/dataset/ ~/.cache/huggingface/ 2>/dev/null` → data and model cache
+
+### TB 2.0 Heuristics
+- **Token Counting:** If asked to count "dataset tokens," do NOT use bash `wc` or simple Python string splitting. You MUST install and use an official tokenizer library (e.g., `pip install tiktoken`) to get an accurate token count.
+
+### Task Archetypes and Approaches
+
+**Model inference** (`hf-model-inference`, `pytorch-model-cli`):
+- ALWAYS check if model files exist locally before downloading anything
+- `python3 -c "from transformers import AutoModel; m = AutoModel.from_pretrained('/app/model')"` → test load
+- For HuggingFace: cache is at `~/.cache/huggingface/` — check before downloading again
+- Batch size 1 for inference unless task specifies; use `torch.no_grad()` context
+
+**Model recovery/repair** (`pytorch-model-recovery`):
+- `python3 -c "import torch; d = torch.load('/app/model.pt', map_location='cpu'); print(type(d), list(d.keys()) if isinstance(d,dict) else 'tensor')"` → inspect checkpoint
+- Missing keys vs unexpected keys in `load_state_dict` → architecture mismatch, fix manually
+- `strict=False` in `load_state_dict` to load partial weights: `model.load_state_dict(state, strict=False)`
+
+**Parallelism** (`torch-pipeline-parallelism`, `torch-tensor-parallelism`):
+- Without GPU: pipeline parallelism uses CPU devices (`device_map="cpu"` or manual `.to("cpu:0")`)
+- Tensor parallelism: split weight matrices across devices — verify with dummy forward pass
+- Always test with a small input before claiming success
+
+**Training** (`caffe-cifar-10`, `train-fasttext`):
+- Read existing config files COMPLETELY before modifying anything
+- `caffe train --solver=/path/to/solver.prototxt 2>&1 | tee /app/training_output.txt`
+- fastText: `pip install fasttext-wheel` or `pip install fasttext` (not `fasttext-python`)
+- For large training: redirect output to file and tail it — don't run blocking in foreground
+
+**Dataset tasks** (`count-dataset-tokens`, `reshard-c4-data`, `mteb-leaderboard`):
+- HuggingFace datasets: `from datasets import load_dataset; ds = load_dataset("name", split="train")`
+- Tokenizer: `from transformers import AutoTokenizer; tok = AutoTokenizer.from_pretrained("model")`
+- For large datasets: use `.map()` with `batched=True` for efficiency, not element-wise loops
+- MTEB: `pip install mteb; python3 -c "from mteb import MTEB; print(MTEB().tasks)"` → list tasks
+
+**Image/segmentation** (`sam-cell-seg`, `code-from-image`):
+- SAM: `pip install segment-anything` then download checkpoint from Meta
+- `from PIL import Image; img = Image.open('/app/image.png'); print(img.size, img.mode)` → inspect first
+- For OCR: tesseract (`apt-get install -y tesseract-ocr`) or easyocr (`pip install easyocr`)
+
+### Reasoning Anchors
+- Is the required model/checkpoint already cached locally? (check before downloading)
+- Does the task need GPU? (most containers are CPU-only — use `map_location='cpu'`)
+- Am I reading existing config files before modifying? (don't write from scratch)
+- What exact output format does the verifier expect? (file name, format, precision)
+- Is the pip install output-bounded? (large models like torch can take minutes)
+
+### Process Example (HuggingFace inference)
+Thought: Need to run inference. Check what's installed and what model files exist.
+Command: python3 -c "import torch,transformers; print(torch.__version__, transformers.__version__)"
+Command: ls -lh /app/model/ ~/.cache/huggingface/ 2>/dev/null
+Thought: Model exists locally. Load and run inference.
+Command: python3 << 'EOF'
+from transformers import pipeline
+pipe = pipeline("text-classification", model="/app/model", device=-1)
+result = pipe("test input text")
+print(result)
+EOF
+[Verify output format matches task requirements]
+"""
+_SHORT["ml"] = """
+### ML Pitfalls (secondary domain awareness)
+- Always check if model files exist locally before downloading (check ~/.cache/huggingface/).
+- Most containers are CPU-only: use `map_location='cpu'` and `device=-1`.
+- Large pip installs (torch, tensorflow) need output bounding: `> /tmp/pip.log 2>&1; tail -5 /tmp/pip.log`
+- For training tasks: redirect output to the required file, don't assume console output is captured.
+"""
+
+# ─── SCIENTIFIC ─────────────────────────────────────────────
+_FULL["scientific"] = """
+## Scientific Computing Specialist — Reasoning Scaffold
+
+### How to Diagnose the Scientific Environment
+- `python3 -c "import numpy,scipy,pandas; print(numpy.__version__, scipy.__version__, pandas.__version__)"` → core stack
+- `Rscript --version 2>/dev/null || echo 'R not available'` → R availability
+- `python3 -c "import pgmpy; print(pgmpy.__version__)"` 2>/dev/null → Bayesian network library
+- `head -3 /app/*.csv /app/*.parquet /app/*.fasta 2>/dev/null` → inspect data format
+
+### Task Archetypes and Approaches
+
+**Bayesian networks** (`bn-fit-modify`):
+- Library: `pgmpy` (Bayesian networks) — `pip install --break-system-packages pgmpy`
+- Workflow: load CSV → run structure learning → fit parameters → perform intervention → sample
+- `from pgmpy.estimators import PC, HillClimbSearch; from pgmpy.models import BayesianNetwork`
+- Causal intervention: `model.do()` or set CPD with Dirac delta at intervention value
+- Save edges: `pd.DataFrame(list(model.edges()), columns=['to','from']).to_csv('/app/learned_dag.csv', index=False)`
+
+**Statistical sampling and distributions** (`adaptive-rejection-sampler`, `distribution-search`):
+- For R tasks: write code to `/app/ars.R` then run `Rscript /app/ars.R`
+- R install in container: `apt-get install -y r-base 2>&1 | tail -5`
+- `scipy.stats` has most standard distributions: `from scipy import stats; stats.norm.pdf(x)`
+- For ARS: implement hull construction, envelope sampling, rejection step as separate functions
+- Test with known distributions (normal, exponential) and compare moments to ground truth
+
+**Scientific curve fitting / spectroscopy** (`raman-fitting`):
+- `from scipy.optimize import curve_fit` for non-linear least squares
+- `from scipy.signal import find_peaks` for peak detection
+- Always plot residuals: `residuals = data - model(x, *params)`
+- Save results to the exact path specified in the task
+
+**Large dataset processing** (`reshard-c4-data`, `count-dataset-tokens`, `mteb-retrieve`):
+- `from datasets import load_dataset` — check if data is already downloaded to `/app/`
+- For token counting: `from transformers import AutoTokenizer` then `tokenizer(text, return_length=True)`
+- Resharding: `dataset.shard(num_shards=N, index=i)` for splitting
+- For MTEB: `from mteb import MTEB; tasks = MTEB(tasks=["TaskName"]); results = tasks.run(model)`
+
+**R/Stan statistical models** (`rstan-to-pystan`, `mcmc-sampling-stan`):
+- pystan: `pip install --break-system-packages pystan`
+- `import stan; model = stan.build(model_code, data=data_dict); fit = model.sample()`
+- Always verify Stan model compiles before sampling: catch compilation errors separately
+- Convert between R and Python: R lists → Python dicts, R vectors → numpy arrays
+
+**DNA/protein assembly** (`dna-assembly`, `dna-insert`, `protein-assembly`):
+- Biopython: `pip install --break-system-packages biopython`
+- `from Bio import SeqIO; for record in SeqIO.parse('/app/sequences.fasta', 'fasta'): print(record.id, len(record))`
+- PCR primer design: primers should have Tm ~55-65°C, avoid hairpins, 18-25bp length
+- `from Bio.SeqUtils import MeltingTemp as mt` for melting temperature calculation
+
+### TB 2.0 Heuristics
+- **SPARQL Queries:** If queried about SPARQL or RDF data, use Python with the `rdflib` package (`pip install rdflib`). Load the graph (`Graph().parse()`) and execute the query using the `.query()` method.
+
+### Reasoning Anchors
+- Does the task require R or Python? (Check for `.R` file path hints or R-specific libraries)
+- Is the required library installed? (Check before writing complex code)
+- What is the EXACT output format? (column names, file paths, decimal precision)
+- For sampling tasks: is the output stochastic? (seed for reproducibility if needed)
+- Have I validated my implementation on a simple known case before the full task?
+
+### Process Example (Bayesian network task)
+Thought: Need to fit Bayesian network. Check data and available libraries first.
+Command: python3 -c "import pandas as pd; df = pd.read_csv('/app/bn_sample_10k.csv'); print(df.shape, list(df.columns))"
+Command: python3 -c "import pgmpy; print('pgmpy OK')" 2>/dev/null || pip install --break-system-packages pgmpy 2>&1 | tail -3
+Thought: Data loaded, pgmpy available. Run structure learning then fit.
+Command: python3 << 'EOF'
+import pandas as pd
+from pgmpy.estimators import PC
+from pgmpy.models import BayesianNetwork
+df = pd.read_csv('/app/bn_sample_10k.csv')
+est = PC(data=df)
+dag = est.estimate(significance_level=0.05)
+print("Edges:", dag.edges())
+EOF
+[Verify edges match expected structure before saving]
+"""
+_SHORT["scientific"] = """
+### Scientific Computing Pitfalls (secondary domain awareness)
+- For R tasks: write to a .R file and run with `Rscript` — don't try to run R commands inline.
+- pgmpy for Bayesian networks, pystan for Stan models — check if installed before using.
+- Output format matters: column names, file paths, decimal precision must match exactly.
+- For stochastic outputs: set a random seed for reproducibility during testing.
+- Biopython for DNA/protein tasks: `pip install --break-system-packages biopython`.
+"""
 
 
 def build_system_prompt(
@@ -657,10 +772,10 @@ You operate inside a Linux container with full shell access via an exec endpoint
 You will be given a PLAN of sub-goals to accomplish in order.
 For each sub-goal, you reason then act ONE COMMAND AT A TIME.
 
-## Response Format
-ALWAYS respond with exactly one of these structures:
+## Response Format — NON-NEGOTIABLE
+EVERY single response MUST use one of these two structures. No exceptions.
 
-For acting:
+For acting (use this for EVERY turn until task is done):
 <thought>
 Step-by-step reasoning grounded in what you actually observed.
 Reference specific files, paths, and values from real output — never assume.
@@ -669,13 +784,27 @@ Reference specific files, paths, and values from real output — never assume.
 single_bash_command_here
 </command>
 
-For completing the task (only after self-verification passes):
+For completing the task (ONLY after verifying success):
 <thought>
 State what you verified and how you confirmed success.
 </thought>
 <done>
 Brief factual summary of what was accomplished.
 </done>
+
+## ⚠️ CRITICAL FORMAT RULES
+1. Every response MUST end with either <command>...</command> or <done>...</done>
+2. NEVER output prose/analysis without a command. If you need to think, use <thought>.
+3. For mathematical analysis or algorithms: write them as Python scripts in <command>
+   Example: <command>python3 -c "import math; print(math.factorial(10))"</command>
+   Or use heredoc: <command>python3 << 'EOF'
+   # your computation here
+   EOF</command>
+4. If you want to write a file, use cat with heredoc in <command>:
+   <command>cat > /app/solution.py << 'EOF'
+   # code here
+   EOF</command>
+5. Do NOT use ``` code blocks instead of <command> tags. Use <command> tags.
 
 ## Non-Negotiable Rules
 - ONE command per response. No command chaining with unrelated operations.
@@ -692,20 +821,16 @@ Brief factual summary of what was accomplished.
 - Never spend more than 3 consecutive turns on the same sub-goal — if stuck, move on.
 - The verifier checks the FINAL container state. Think backwards from that.
 
-## CRITICAL: COMMAND EXECUTION & TIMEOUTS
-You have up to 300 seconds per command execution. You ARE allowed to run `apt-get update`, compile large projects, or install heavy pip packages like `torch`. 
+## Package Installation Strategy (300-second command budget)
+You have up to 300 seconds per command execution. Use it.
 
-However, you MUST strictly manage the output size to prevent API Gateway timeouts:
-1. ALWAYS bound your installations and builds: `apt-get install -y pkg > /tmp/out 2>&1; head -15 /tmp/out; echo "..."; tail -15 /tmp/out`
-2. NEVER output more than 50 lines of text per turn.
-3. If a build fails, read the `tail` of the log to find the exact missing dependency, install it, and resume.
-
-Safe package installation strategy:
-1. Check first: python3 -c "import X" 2>/dev/null && echo OK || echo MISSING
-2. Use pip install --break-system-packages PACKAGE 2>&1 | tail -3 (safe in Docker)
-3. For apt: skip apt-get update, just run apt-get install -y PACKAGE 2>&1 | tail -5
-4. Install ONE small package at a time
-5. If a package cannot be installed in time, solve the task without it
+- `apt-get update` alone is fine — run it when you need fresh package lists
+- `pip install --break-system-packages PKG1 PKG2 PKG3` — multiple packages in ONE command is fine
+- Always bound output to avoid buffer floods:
+  `pip install --break-system-packages PKG > /tmp/pip.log 2>&1; tail -5 /tmp/pip.log`
+  `apt-get install -y PKG > /tmp/apt.log 2>&1; tail -5 /tmp/apt.log`
+- `make`, `cargo build`, `npm install` are allowed — redirect output and tail it
+- Check before install: `python3 -c "import X" 2>/dev/null && echo OK || echo MISSING`
 """
 
     sections = [base, _FULL.get(domain_result.primary, _FULL["generic"])]

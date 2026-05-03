@@ -82,9 +82,7 @@ Your primary goal is to REPAIR commands so they survive a strict 300-second time
    - REVISE unbounded commands to use the Sandwich: `(COMMAND) > /tmp/out 2>&1; head -n 20 /tmp/out; echo "... [truncated] ..."; tail -n 40 /tmp/out`
 
 2. INSTALLATION STRATEGY:
-   - FRAGMENTATION: If installing multiple large packages (e.g., pandas+pgmpy, torch, tensorflow), REVISE to install only ONE package per turn.
-   - CHECK BEFORE INSTALL: If installing a Python package, REVISE to: `python3 -c "import X" 2>/dev/null || pip install --break-system-packages X 2>&1 | tail -n 10`.
-   - OUTPUT BOUNDING: Every standard `apt` or `pip` command MUST end with `2>&1 | tail -n 10` to prevent buffer hangs.
+   - OUTPUT BOUNDING: Every pip install MUST redirect output: `pip install --break-system-packages PKG > /tmp/pip.log 2>&1; tail -5 /tmp/pip.log`. You may install multiple packages in one command.
    - IMPORTANT: `pip install --break-system-packages` is safe in Docker. Do NOT remove this flag.
 
 3. INTERACTIVE HANGS:

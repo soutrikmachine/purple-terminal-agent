@@ -111,8 +111,9 @@ Allocation rules:
 Constraints:
   - SUM of all max_turns MUST be ≤ {budget} (we reserve 3 turns for global safety).
   - If sum exceeds budget: Merge subgoals or prioritize implementation over exploration.
-  - NEVER plan more than 5 subgoals total — over-granularity causes turn-budget exhaustion[cite: 4].
   - If timeout_risk = true: Cap that specific subgoal at 2 turns to fail fast if it hangs.
+  - NEVER plan more than 3 subgoals total. [1] Recon & Install, [2] Implement, [3] Verify.
+  - Over-granularity causes turn-budget exhaustion. Combine exploration and installation into the first subgoal.
 """
 
 
