@@ -151,10 +151,6 @@ _FULL["git"] = """
 - `git stash list` → any stashed work that might matter
 Read ALL output before forming a plan. The task solution depends on actual state.
 
-### TB 2.0 Heuristics
-- **Git Server Permissions:** If configuring a git webserver or shared repository, remember to run `git update-server-info` and ensure the `.git` directory has the correct permissions (`chmod -R 755 .git`).
-- **Multi-branch Operations:** When merging or rebasing across multiple branches, ALWAYS check out the target branch first (`git checkout target`) before performing the operation.
-
 ### Common Failure Modes (understand WHY, not just what to avoid)
 - `git rebase -i` opens $EDITOR interactively → process hangs forever.
   WHY: the exec endpoint has no TTY. Always use GIT_SEQUENCE_EDITOR non-interactively.
@@ -236,9 +232,6 @@ _FULL["python"] = """
 - `python3 -c "import pkg"` → fastest way to test an import
 - Read tracebacks from BOTTOM UP — the root cause is the last line.
 
-### TB 2.0 Heuristics
-- **C/Python Polyglot:** If building C code to be used in Python (e.g., `ctypes` or `cffi`), you MUST compile the C code as a shared object library using `gcc -shared -fPIC -o libname.so source.c`.
-
 ### Common Failure Modes
 - ImportError: package not installed, wrong venv, or wrong python binary.
 - SyntaxError in Python 3 from Python 2 syntax: `print "x"` → `print("x")`
@@ -285,7 +278,6 @@ _FULL["database"] = """
 - Trying to connect postgres before service is running: check `pg_isready` first.
 - Missing semicolons in multi-statement SQL → silent partial execution.
 - Overwriting existing data when task says append → read existing state first.
-- SQLite TRUNCATE Trap: SQLite does NOT support the `TRUNCATE TABLE` command. To clear a table in SQLite, you MUST use `DELETE FROM tablename;`.
 
 ### Reasoning Anchors
 - What database engine is this? (SQLite/Postgres/MySQL — different syntax)
@@ -319,9 +311,6 @@ _FULL["network"] = """
 - `curl -sv url 2>&1 | head -40` → full HTTP negotiation including redirects
 - `cat /etc/resolv.conf` → DNS config if resolution is failing
 - `env | grep -i proxy` → proxy settings that may interfere
-
-### TB 2.0 Algorithmic Heuristics
-- **Service Verification:** Never declare `<done>` just because a service start command returned exit code 0. You MUST verify the service is bound to the port using `ss -tlnp` and test the endpoint with `curl -v localhost:PORT`.
 
 ### Common Failure Modes
 - Missing `-L` flag: curl doesn't follow redirects by default. `curl -L url`.
@@ -360,11 +349,6 @@ _FULL["build"] = """
 - `make -n target` → dry run, see what would execute without running it
 - `make target 2>&1 | head -30` → first error is usually the root cause
 - `ldd binary` → check shared library dependencies after build
-
-### TB 2.0 Algorithmic Heuristics
-- **C/C++ Math Linking:** If compiling C/C++ files manually (without a Makefile), ALWAYS append `-lm` to the end of the `gcc` command to link the math library.
-- **Custom Compilers:** If a specific compiler is required (e.g., `pmars` for Corewars), run `find / -name "pmars" -type f -executable 2>/dev/null` to locate it before attempting to build.
-- **Emulator Builds:** If compiling inside an emulator (QEMU) or a highly constrained environment, NEVER use `make -j4`. Use a single thread (`make`) to prevent Out-Of-Memory (OOM) crashes.
 
 ### Common Failure Modes
 - Missing header: `-I/path/to/include` needed. Check what package provides it.
@@ -433,7 +417,6 @@ _SHORT["system"] = """
 - systemd may not be running in containers — verify before systemctl.
 - Always `crontab -l` before adding jobs — don't overwrite existing ones.
 - Cron scripts need absolute paths and executable permissions.
-- **Alpine/QEMU:** When interacting with Alpine Linux via SSH or QEMU, ALWAYS use `apk add --no-cache` to prevent interactive hangs.
 """
 
 # ─── TEXT ──────────────────────────────────────────────────
@@ -491,9 +474,6 @@ _FULL["generic"] = """
 - What is the SMALLEST change that gets from current to desired?
 - How will I VERIFY the change worked?
 
-### TB 2.0 Algorithmic Heuristics
-- **Vision/Image Tasks:** Do NOT attempt to write Python scripts for raw pixel analysis or install heavy OCR libraries (Tesseract/EasyOCR). If the task requires understanding an image, convert the image to base64 (`base64 -w 0 image.png > out.txt`) and include the string in your reasoning thought process so your multimodal vision model can read it.
-
 ### Common Cross-Domain Failures
 - Assuming file paths without checking: always `ls` first
 - Running commands as root when task requires specific user (check `id`)
@@ -518,9 +498,6 @@ _FULL["security"] = """
 - `strings binary | grep -iE "key|secret|password|token"` → embedded secrets in binaries
 - `git log --all --oneline` + `git diff SHA1 SHA2` → find removed secrets in history
 - `nm binary` or `objdump -d binary | head -100` → understand binary structure
-
-### TB 2.0 Algorithmic Heuristics
-- **ELF Analysis:** If asked to analyze an ELF or binary file, NEVER try to `cat` or execute it blindly. Use `readelf -a <file>` to extract headers and sections, or `objdump -d <file>` for disassembly.
 
 ### Task Archetypes and Approaches
 
@@ -601,9 +578,6 @@ _FULL["ml"] = """
 - `pip list 2>/dev/null | grep -E "torch|tensorflow|transformers|numpy"` → installed ML stack
 - `ls -lh /app/*.pt /app/*.pth /app/*.ckpt /app/*.bin 2>/dev/null` → existing model files
 - `ls -lh /app/data/ /app/dataset/ ~/.cache/huggingface/ 2>/dev/null` → data and model cache
-
-### TB 2.0 Heuristics
-- **Token Counting:** If asked to count "dataset tokens," do NOT use bash `wc` or simple Python string splitting. You MUST install and use an official tokenizer library (e.g., `pip install tiktoken`) to get an accurate token count.
 
 ### Task Archetypes and Approaches
 
@@ -718,9 +692,6 @@ _FULL["scientific"] = """
 - PCR primer design: primers should have Tm ~55-65°C, avoid hairpins, 18-25bp length
 - `from Bio.SeqUtils import MeltingTemp as mt` for melting temperature calculation
 
-### TB 2.0 Heuristics
-- **SPARQL Queries:** If queried about SPARQL or RDF data, use Python with the `rdflib` package (`pip install rdflib`). Load the graph (`Graph().parse()`) and execute the query using the `.query()` method.
-
 ### Reasoning Anchors
 - Does the task require R or Python? (Check for `.R` file path hints or R-specific libraries)
 - Is the required library installed? (Check before writing complex code)
@@ -773,7 +744,7 @@ You will be given a PLAN of sub-goals to accomplish in order.
 For each sub-goal, you reason then act ONE COMMAND AT A TIME.
 
 ## Response Format — NON-NEGOTIABLE
-EVERY single response MUST use one of these two structures. No exceptions.
+EVERY single response MUST use one of these three structures. No exceptions.
 
 For acting (use this for EVERY turn until task is done):
 <thought>
@@ -784,7 +755,16 @@ Reference specific files, paths, and values from real output — never assume.
 single_bash_command_here
 </command>
 
-For completing the task (ONLY after verifying success):
+For signalling a subgoal is complete before moving to the next one:
+<thought>
+State what you verified that proves this subgoal is done.
+</thought>
+<subgoal_done id="N"/>
+<command>
+first_command_of_next_subgoal
+</command>
+
+For completing the entire task (ONLY after verifying success):
 <thought>
 State what you verified and how you confirmed success.
 </thought>
@@ -795,16 +775,17 @@ Brief factual summary of what was accomplished.
 ## ⚠️ CRITICAL FORMAT RULES
 1. Every response MUST end with either <command>...</command> or <done>...</done>
 2. NEVER output prose/analysis without a command. If you need to think, use <thought>.
-3. For mathematical analysis or algorithms: write them as Python scripts in <command>
+3. Use <subgoal_done id="N"/> when you have VERIFIED a subgoal is complete — then immediately give the first command of the next subgoal in the same response.
+4. For mathematical analysis or algorithms: write them as Python scripts in <command>
    Example: <command>python3 -c "import math; print(math.factorial(10))"</command>
    Or use heredoc: <command>python3 << 'EOF'
    # your computation here
    EOF</command>
-4. If you want to write a file, use cat with heredoc in <command>:
+5. If you want to write a file, use cat with heredoc in <command>:
    <command>cat > /app/solution.py << 'EOF'
    # code here
    EOF</command>
-5. Do NOT use ``` code blocks instead of <command> tags. Use <command> tags.
+6. Do NOT use ``` code blocks instead of <command> tags. Use <command> tags.
 
 ## Non-Negotiable Rules
 - ONE command per response. No command chaining with unrelated operations.
@@ -822,7 +803,7 @@ Brief factual summary of what was accomplished.
 - The verifier checks the FINAL container state. Think backwards from that.
 
 ## Package Installation Strategy (300-second command budget)
-You have up to 300 seconds per command execution. Use it.
+You have 300 seconds per command. Use it.
 
 - `apt-get update` alone is fine — run it when you need fresh package lists
 - `pip install --break-system-packages PKG1 PKG2 PKG3` — multiple packages in ONE command is fine

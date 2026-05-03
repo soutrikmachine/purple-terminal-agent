@@ -233,7 +233,7 @@ class AgentSession:
                 system=self.system_prompt,
                 messages=self.messages,
                 max_tokens=1024,
-                temperature=0.4,
+                temperature=0.2,
             )
         except Exception as e:
             logger.error("LLM error: %s", e)
@@ -242,24 +242,24 @@ class AgentSession:
         self.messages.append({"role": "assistant", "content": llm_response})
         logger.info("LLM turn %d: %.200s", self.turn, llm_response)
 
-        # ── Detect subgoal advancement from LLM output ───────────────────────
-        # The LLM says "sub-goal [N] complete" or "moving to [N+1]" in its thoughts.
-        # Parse that and advance current_sg_idx so the critic sees the correct subgoal.
-        import re as _re
-        advance_match = _re.search(
-            r"(?:sub.goal|subgoal)\s*\[?(\d+)\]?\s*(?:complete|done|finished|accomplished|moving to|proceed)",
-            llm_response, _re.IGNORECASE
-        )
-        if advance_match:
-            mentioned_sg = int(advance_match.group(1))
-            if mentioned_sg > self.current_sg_idx + 1:
-                self.current_sg_idx = min(mentioned_sg - 1, len(self.subgoals) - 1)
-                logger.info("Subgoal advanced to idx=%d based on LLM output", self.current_sg_idx)
+        # ── Subgoal done signalling — explicit tag, no fragile regex ─────────
+        # LLM emits <subgoal_done id="N"/> when it has VERIFIED subgoal N is complete.
+        sg_done_match = re.search(r'<subgoal_done\s+id=["\']?(\d+)["\']?\s*/?>', llm_response)
+        if sg_done_match:
+            completed_id = int(sg_done_match.group(1))
+            # Advance to next subgoal — id is 1-based, idx is 0-based
+            new_idx = min(completed_id, len(self.subgoals) - 1)  # completed id=N → next is idx N
+            if new_idx > self.current_sg_idx:
+                self.current_sg_idx = new_idx
+                logger.info("Subgoal %d complete → advancing to subgoal idx=%d (%s)",
+                            completed_id, self.current_sg_idx,
+                            self.subgoals[self.current_sg_idx].get("goal", "?")[:60]
+                            if self.current_sg_idx < len(self.subgoals) else "final")
 
-
+        # ── Check for <done> tag ──────────────────────────────────────────
         done_content = _extract_tag(llm_response, "done")
         if done_content is not None:
-            logger.info("Agent declares done at turn %d — running self-verify", self.turn)
+            logger.info("Agent declares done at turn %d", self.turn)
             return await self._handle_done(done_content)
 
         # ── Extract <command> tag (permissive fallback chain) ────────────

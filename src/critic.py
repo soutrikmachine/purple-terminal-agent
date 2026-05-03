@@ -187,7 +187,7 @@ Is this command safe to execute? Check all 5 failure modes."""
             system=CRITIC_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
             max_tokens=256,
-            temperature=0.1,
+            temperature=0.2,
         )
 
         verdict = result.get("verdict", "APPROVE").upper()
