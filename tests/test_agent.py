@@ -157,7 +157,9 @@ class TestCriticFastCheck:
         assert needs is True
 
     def test_apt_with_y_approved(self):
-        needs, _, _ = self.check("apt-get install -y python3-dev")
+        # Now requires BOTH the -y flag (interactive safety) 
+        # AND output bounding (504 Gateway API safety)
+        needs, _, _ = self.check("apt-get install -y python3-dev > /tmp/out 2>&1; tail -n 10 /tmp/out")
         assert needs is False
 
     def test_ls_is_safe(self):
