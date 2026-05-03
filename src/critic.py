@@ -44,25 +44,15 @@ _INTERACTIVE_PATTERNS = [
      "apt install without -y flag may prompt for confirmation"),
 ]
 
-# ── 30-second timeout patterns ───────────────────────────────────────────────
-# Commands that reliably exceed the 30s hard timeout and must be rewritten.
-# NOTE: "timeout N apt-get update" and "apt-get update 2>&1 | tail -N" are ALLOWED
-# because they are explicitly time-bounded or output-bounded.
-_TIMEOUT_PATTERNS = [
-    # bare "apt-get update" with no timeout wrapper or pipe — takes 15-20s
-    (r"^\s*apt-get\s+update\s*$",
-     "apt-get update alone takes 15-20s — skip it or use: timeout 20 apt-get update 2>&1 | tail -3"),
-    # combined apt-get update && apt-get install always exceeds 30s
-    (r"apt-get\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt-get\s+install",
-     "apt-get update && apt-get install always times out — drop the update, use: apt-get install -y PACKAGE 2>&1 | tail -5"),
-    (r"apt\s+update\s*(?:2>&1[^&]*)?\s*&&\s*apt\s+install",
-     "apt update && apt install always times out — drop the update"),
-    # Large ML packages that exceed 30s download/install window
-    (r"pip\s+install.*(torch|pytorch|tensorflow|easyocr|nvidia-|transformers)", 
-     "Large ML packages will exceed the 30s timeout. Skip or use a smaller alternative."),
-    # Aggressive security scans
-    (r"nmap\s+-[as][S|V|C]", 
-     "Aggressive nmap scans often exceed 30s. Use fast/targeted scans like nmap -p- or nmap -F."),
+# ── Unbounded Output Patterns ───────────────────────────────────────────────
+# Commands that generate massive logs and cause 504 Gateway Timeouts.
+_UNBOUNDED_PATTERNS = [
+    (r"^(?!.*(>|tail|head)).*\b(apt-get|apt)\s+(update|install|upgrade)\b",
+     "apt commands generate massive logs. Output-bound them: > /tmp/out 2>&1; head -n 20 /tmp/out; echo '...'; tail -n 40 /tmp/out"),
+    (r"^(?!.*(>|tail|head)).*\bpip\s+install\b",
+     "pip install progress bars flood the context. Output-bound them: > /tmp/pip.log 2>&1; head -n 20 /tmp/pip.log; echo '...'; tail -n 40 /tmp/pip.log"),
+    (r"^(?!.*(>|tail|head)).*\bmake\b",
+     "make builds generate too much text. Output-bound them: > /tmp/make.log 2>&1; head -n 20 /tmp/make.log; echo '...'; tail -n 40 /tmp/make.log")
 ]
 
 # ── Explicitly safe patterns — skip LLM critic entirely ──────────────────────
@@ -82,38 +72,33 @@ _DESTRUCTIVE_PATTERNS = [
 ]
 
 CRITIC_SYSTEM = """You are a pre-flight safety and efficiency reviewer for a terminal agent.
-Your primary goal is to REPAIR commands so they survive a strict 30-second timeout, do not hang, and provide actionable logs.
+Your primary goal is to REPAIR commands so they survive a strict 300-second timeout, do not hang, and provide actionable logs.
 
 ## Mandatory Heuristics (in priority order):
 
-1. TIMEOUT PREVENTION (30s Budget):
-   - `apt-get update` is a turn-waster. Silently REMOVE it from chained commands.
-   - If a command is just `apt-get update`, REVISE to `echo "Skipping update"`.
-   - Combined `update && install` MUST be split; remove the update and only keep the install.
+1. 504 GATEWAY PREVENTION (300s Budget & 60-Line Rule):
+   - You have 300 seconds per command. `apt-get update`, `pip install torch`, and `make` ARE allowed.
+   - However, NEVER execute `apt`, `pip`, `make`, or `npm` without output truncation.
+   - REVISE unbounded commands to use the Sandwich: `(COMMAND) > /tmp/out 2>&1; head -n 20 /tmp/out; echo "... [truncated] ..."; tail -n 40 /tmp/out`
 
-2. SMART OUTPUT MANAGEMENT (The 50-Line Rule):
-   - Any command likely to produce volume (make, train, log, find) MUST be truncated.
-   - REVISE to: `(COMMAND) > /tmp/out 2>&1; head -n 15 /tmp/out; echo "... [truncated] ..."; tail -n 15 /tmp/out`
-   - Strictly limit total output to 30 lines. Large buffers cause "Client Request" timeouts.[cite: 8]
-
-3. INSTALLATION STRATEGY:
+2. INSTALLATION STRATEGY:
    - FRAGMENTATION: If installing multiple large packages (e.g., pandas+pgmpy, torch, tensorflow), REVISE to install only ONE package per turn.
-   - CHECK BEFORE INSTALL: If installing a Python package, REVISE to: `python3 -c "import X" 2>/dev/null || pip install --break-system-packages X 2>&1 | tail -n 5`.
-   - OUTPUT BOUNDING: Every standard `apt` or `pip` command MUST end with `2>&1 | tail -n 5` to prevent buffer hangs.
+   - CHECK BEFORE INSTALL: If installing a Python package, REVISE to: `python3 -c "import X" 2>/dev/null || pip install --break-system-packages X 2>&1 | tail -n 10`.
+   - OUTPUT BOUNDING: Every standard `apt` or `pip` command MUST end with `2>&1 | tail -n 10` to prevent buffer hangs.
    - IMPORTANT: `pip install --break-system-packages` is safe in Docker. Do NOT remove this flag.
 
-4. INTERACTIVE HANGS:
+3. INTERACTIVE HANGS:
    - REVISE any command that opens an editor/pager (vim, nano, less, man).
    - Force `GIT_SEQUENCE_EDITOR=":"` for rebases and `--no-edit` for commits/merges.
 
-5. GROUNDING & BLIND COPYING:
+4. GROUNDING & BLIND COPYING:
    - REVISE if the command references a file path not yet seen in history.
    - Stop the agent from assuming directory structures (e.g., assuming `tests/` exists before `ls` confirms it).
 
-6. NON-DESTRUCTIVE MODS:
+5. NON-DESTRUCTIVE MODS:
    - REVISE `rm` or overwrite commands on files that haven't been `cat`'d or inspected first.
 
-7. WRONG FLAGS FOR CONTEXT:
+6. WRONG FLAGS FOR CONTEXT:
    - --force / --hard when task says "preserve history" → REVISE
    - Missing -y on apt/pip when running non-interactively → REVISE
    - Missing -L on curl for redirect-following downloads → REVISE
@@ -139,21 +124,11 @@ def _fast_check(command: str) -> tuple[bool, str, str]:
         if re.search(pattern, command):
             return True, issue, ""
 
-    # 30-second timeout patterns — highest priority
-    for pattern, issue in _TIMEOUT_PATTERNS:
+    # 504 Gateway Prevention — flag unbounded outputs
+    for pattern, issue in _UNBOUNDED_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
-            # Auto-fix: strip "apt-get update &&" from combined commands
-            fixed = re.sub(r"(apt-get|apt)\s+update\s*(-qq|-q)?\s*(2>&1\s*\|\s*tail\s+-\d+\s*)?&&\s*", "", command)
-            
-            # If it was just "apt-get update" alone, replace with a no-op explanation
-            if re.match(r"^\s*(apt-get|apt)\s+update\s*$", command.strip(), re.IGNORECASE):
-                fixed = "echo 'Skipping update (30s limit). Proceeding to direct install.'"
-            
-            # For large pip installs or nmap, no simple auto-fix; return empty string to force agent to re-plan
-            if any(kw in command for kw in ["pip install", "nmap"]):
-                 return True, issue, ""
-
-            return True, issue, fixed.strip()
+            # Do not auto-fix. Return to LLM to let the Critic generate the exact sandwich fix.
+            return True, issue, ""
 
     # Interactive patterns (keeping existing source logic)
     for pattern, issue in _INTERACTIVE_PATTERNS:

@@ -78,8 +78,8 @@ async def self_verify(exec_client: ExecClient, task_text: str) -> tuple[bool, st
 
 def _build_run_command(test_file: str) -> str:
     """Choose the right runner for Terminal-Bench components"""
-    # Use 28s to give the executor a 2s buffer before the hard 30s timeout
-    timeout_prefix = "timeout 28s " 
+    # Use 295s to give the executor a 5s buffer before the hard 300s timeout
+    timeout_prefix = "timeout 295s " 
     
     if "test.sh" in test_file:
         return f"{timeout_prefix} bash {test_file} 2>&1"

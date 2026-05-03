@@ -334,6 +334,11 @@ _FULL["build"] = """
 - `make target 2>&1 | head -30` → first error is usually the root cause
 - `ldd binary` → check shared library dependencies after build
 
+### TB 2.0 Heuristics
+- You have 300s to build. You CAN use `make -j4` to speed up compilation.
+- If a build fails with "missing header," you have the time to run `apt-cache search <name>` and install the exact `-dev` package.
+- ALWAYS use the Head-Tail log sandwich for `make` commands so you don't flood the terminal buffer but still see the GCC errors at the end.
+
 ### Common Failure Modes
 - Missing header: `-I/path/to/include` needed. Check what package provides it.
 - Missing library: `-L/path -lname` needed, or `apt-get install libname-dev`.
@@ -362,7 +367,7 @@ _SHORT["build"] = """
 - Read Makefile before running make — understand targets first.
 - Missing headers need dev packages (`libname-dev`), not just runtime packages.
 - CMake needs out-of-source build directory.
-- For pmars and others, run make -j1 (single-thread). 
+- For pmars and others, run make -j1 (single-thread). You CAN use `make -j4` to speed up compilation.
 """
 
 # ─── SYSTEM ────────────────────────────────────────────────
@@ -476,7 +481,7 @@ _FULL["security"] = """
 
 ### Process Example: Forensic Secret Recovery
 Thought: The task asks to recover a secret deleted from a Git repo. I must not run 'git prune' or 'git gc' as it might destroy reachable objects. I will use the reflog to find the commit hash before the deletion.
-Command: git reflog > /tmp/git_logs 2>&1; git log --patch -n 5 >> /tmp/git_logs 2>&1; head -n 20 /tmp/git_logs; echo "... [truncated] ..."; tail -n 20 /tmp/git_logs
+Command: git reflog > /tmp/git_logs 2>&1; git log --patch -n 5 >> /tmp/git_logs 2>&1; head -n 20 /tmp/git_logs; echo "... [truncated] ..."; tail -n 40 /tmp/git_logs
 Observation: ... HEAD@{1}: commit: Removing accidental API_KEY leak ... - API_KEY=s3cr3t_v4ult_123
 Thought: The key was in the reflog. I will now export it and run the test harness to verify.
 Command: export API_KEY=s3cr3t_v4ult_123 && bash tests/test.sh
@@ -509,6 +514,8 @@ _FULL["ml"] = """
 - **The Solver Hack**: For tasks requiring "exactly N iterations," find the `solver.prototxt` and use `sed` to set `max_iter: N`, `display: 1`, and `snapshot: 0`. This prevents huge log files and long training hangs[cite: 3].
 - **Caffe Binary Paths**: If `caffe` command is missing, look for it in `/app/caffe/build/tools/caffe` or `/usr/local/bin/caffe`[cite: 3].
 - **OOM Management**: If training crashes with "Out of Memory," use `sed` to halve the `batch_size` in the `.prototxt` files before restarting[cite: 5].
+- **Safe Installs**: You have the time to `pip install torch` or `transformers` if the task requires it. Just ensure you append `> /tmp/pip.log 2>&1; tail -n 10 /tmp/pip.log` so the progress bars don't crash the JSON parser.
+- **Iteration Limits**: Even with 300s, do not run models for infinite epochs. Use `sed` to cap `max_iter` or `epochs` to the minimum required to prove success.
 
 ### Reasoning Anchors
 - Does this task require a GPU, and is it accessible in the container environment?
@@ -516,7 +523,6 @@ _FULL["ml"] = """
 - Are both the model and the data tensors on the correct `device`?
 - Am I using `with torch.no_grad():` during inference to prevent OOM errors?
 - Have I located the framework installation and pretrained weights?
-- Am I using `2>&1 | tail -n 5` to prevent logs from overflowing the 30s buffer?
 - Is the dataset local, or do I need to fetch it using `wget`?
 
 ### Process Example (Modify Caffe iterations)
@@ -529,7 +535,7 @@ Command: sed -i 's/max_iter: [0-9]*/max_iter: 5/' ./models/bvlc_reference_caffen
 _SHORT["ml"] = """
 ### ML & Framework Pitfalls
 - **Assume Pre-installed**: Check `/app/caffe` or framework paths first; don't waste 10 turns building from source[cite: 1]. Never import torch or import pgmpy just for a check. Use pip show pgmpy instead—it's nearly instantaneous and doesn't load the library into memory.
-- **Iteration Limits**: Use `sed` to set `max_iter` to the exact required number (e.g., 5) in `.prototxt` or scripts to avoid 30s timeouts[cite: 3].
+**Iteration Limits**: Even with 300s, do not run models for infinite epochs. Use `sed` to cap `max_iter` or `epochs` to the minimum required to prove success.
 - **Resource Check**: Run `nvidia-smi` Turn 1 to verify GPU state before initializing large models[cite: 3].
 """
 
@@ -550,7 +556,7 @@ _FULL["data"] = """
 - Type errors in CSVs: A single string "NA" in a numeric column turns the entire column into an object type.
 
 ### TB 2.0 Heuristics
-- **Sampling Safety**: For `mcmc-sampling-stan` or `rstan` tasks, ALWAYS set `chains=1, iter=100, warmup=50` in the script. Running default high iterations WILL hit the 30-second Harbor timeout[cite: 1, 6].
+- **Sampling Safety**: For `mcmc-sampling-stan` or `rstan` tasks, ALWAYS set `chains=1, iter=100, warmup=50` in the script. 
 - **pgmpy Estimators**: For DAG recovery (e.g., `bn-fit-modify`), use `pgmpy.estimators.HillClimbSearch` with `BicScore` for deterministic recovery[cite: 4].
 - **Chunking**: For CSV processing, use `pandas.read_csv(chunksize=...)` or `awk` to prevent the container from OOMing on large dataset samples[cite: 5].
 
@@ -560,7 +566,7 @@ _FULL["data"] = """
 - Is the script failing on type coercion? (Always check `.dtypes`).
 - Am I using the correct language ecosystem expected by the task? (R vs Python).
 - Does this task require recovering the *structure* (DAG) or the *parameters* (CPDs)?[cite: 4].
-- Have I limited the sampling iterations to survive the 30s turn budget?[cite: 6].
+- Have I limited the sampling iterations to survive the 300s turn budget?[cite: 6].
 
 ### Process Example: Bayesian DAG Recovery
 Thought: Task requires recovering a DAG from a CSV. I'll verify 'pgmpy' is available and check the data scale.
@@ -576,12 +582,12 @@ est = HillClimbSearch(data)
 model = est.estimate(scoring_method=BicScore(data))
 print(sorted(model.edges()))
 EOF
-python3 solution.py 2>&1 | tail -n 10
+python3 solution.py 2>&1 | tail -n 40
 [verify output format meets requirements]
 """
 _SHORT["data"] = """
 ### Data & Bayesian Pitfalls
-- **Sampling Safety**: For Stan/MCMC tasks, always set `chains=1` and `iter=100` to survive the 30s turn limit[cite: 1, 6].
+- **Sampling Safety**: For Stan/MCMC tasks, you can set `chains=3` and `iter=100` to survive the 300s turn limit[cite: 1, 6].
 - **Memory Management**: Check CSV scale with `ls -lh` first; use `nrows=100` for recon to avoid OOM hangs[cite: 5].
 - **Deterministic DAGs**: Use `HillClimbSearch` with `BicScore` in pgmpy for faster, more reliable benchmark recovery[cite: 6].
 """
@@ -591,12 +597,11 @@ _FULL["generic"] = """
 ## General Terminal Task — Reasoning Scaffold
 
 ## Mandatory Orientation (Turn 1)
-Execute ONLY this lightweight discovery command:
-`pwd && ls -F && ls -F tests/ 2>/dev/null`
+`pwd && find . -maxdepth 2 -type d -name "tests" 2>/dev/null && ls -F`
 
-1. Ground your plan ONLY in visible files. 
-2. Do NOT check for compilers (gcc/make) until Turn 2.
-3. If `tests/` exists, your next move is to `cat` the test files.
+1. This locates the test harness safely without deep recursion.
+2. If `tests/` is found, Turn 2 MUST be `cat tests/test.sh` to read the exact success conditions.
+3. Ground your plan ONLY in visible files. 
 4. Never assume the environment is empty; look for existing source folders.
 5. Identify the success condition from the task and match it to available tests.[cite: 1, 3]
 
@@ -611,7 +616,7 @@ Execute ONLY this lightweight discovery command:
 - **Premature Completion**: Declaring `<done>` before running the provided benchmark scripts.[cite: 3]
 - **Silent Failures**: Assuming a command worked because it had no output (always verify with `cat` or `ls`).[cite: 1]
 - **Path Blindness**: Assuming `tests/` is in the root; always use `find` to locate the test suite.[cite: 3]
-- **Timeout Neglect**: Forgetting that every command has a hard 30s limit (avoid long `apt` or `pip` chains).[cite: 2]
+- **Timeout Neglect**: Forgetting that every command has a hard 300s limit (avoid long `apt` or `pip` chains).[cite: 2]
 
 ### Reasoning Anchors
 - Have I located and read the benchmark's `test.sh` or `test_outputs.py`?[cite: 3]
@@ -687,15 +692,13 @@ Brief factual summary of what was accomplished.
 - Never spend more than 3 consecutive turns on the same sub-goal — if stuck, move on.
 - The verifier checks the FINAL container state. Think backwards from that.
 
-## CRITICAL: 30-SECOND HARD TIMEOUT PER COMMAND
-Every command has a HARD 30-second timeout. If it exceeds 30 seconds the ENTIRE TASK FAILS immediately.
+## CRITICAL: COMMAND EXECUTION & TIMEOUTS
+You have up to 300 seconds per command execution. You ARE allowed to run `apt-get update`, compile large projects, or install heavy pip packages like `torch`. 
 
-Commands that WILL timeout (avoid these):
-- apt-get update alone takes 15-20s, leaves no room for install
-- apt-get update followed by apt-get install always times out
-- pip install of large packages (torch, tensorflow, easyocr) takes 60-300s
-- make/cargo build/npm install on large projects
-- find / or find with no depth limit
+However, you MUST strictly manage the output size to prevent API Gateway timeouts:
+1. ALWAYS bound your installations and builds: `apt-get install -y pkg > /tmp/out 2>&1; head -15 /tmp/out; echo "..."; tail -15 /tmp/out`
+2. NEVER output more than 50 lines of text per turn.
+3. If a build fails, read the `tail` of the log to find the exact missing dependency, install it, and resume.
 
 Safe package installation strategy:
 1. Check first: python3 -c "import X" 2>/dev/null && echo OK || echo MISSING

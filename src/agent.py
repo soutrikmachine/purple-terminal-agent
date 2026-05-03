@@ -129,7 +129,7 @@ class AgentSession:
     async def on_task(self) -> str:
         """Phase 1: kick off with RECON command."""
         logger.info("Session start — sending RECON command")
-        return json.dumps({"kind": "exec_request", "command": RECON_CMD})
+        return json.dumps({"kind": "exec_request", "command": RECON_CMD, "timeout": 300})
 
     async def on_exec_result(self, result: dict) -> str:
         """Called for every exec_result. Drives all phases."""
@@ -275,7 +275,7 @@ class AgentSession:
             )
             self.messages.append({"role": "user", "content": nudge})
             # Return a diagnostic ls to keep things moving
-            return json.dumps({"kind": "exec_request", "command": "ls -la"})
+            return json.dumps({"kind": "exec_request", "command": "ls -la", "timeout": 300})
 
         # ── Critic pre-flight ─────────────────────────────────────────────
         current_sg = self.subgoals[min(self.current_sg_idx, len(self.subgoals)-1)] if self.subgoals else {}
@@ -300,7 +300,7 @@ class AgentSession:
 
         self.collected_commands.append(final_cmd)
         self.observation_history += f"\n$ {final_cmd}"
-        return json.dumps({"kind": "exec_request", "command": final_cmd})
+        return json.dumps({"kind": "exec_request", "command": final_cmd, "timeout": 300})
 
     async def _handle_done(self, done_content: str) -> str:
         """

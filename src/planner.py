@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek-v4-flash"))
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
-PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "1"))  # set to 1 to disable
+PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
 
 # approved 12s threshold logic
 PLAN_TIMEOUT = 12.0
@@ -47,18 +47,17 @@ PLAN_TIMEOUT = 12.0
 FAILURE_EXAMPLES = """
 ## ❌ Plans That FAILED in Real Runs (learn from these)
 
-FAIL 1 — build-pmars (command timeout):
+FAIL 1 — build-pmars (API Gateway crash):
   Subgoal: "Install build dependencies"
   What happened: agent ran `apt-get update && apt-get install -y build-essential`
-  Result: Command timed out after 30 seconds → entire task failed immediately
-  Fix: Check what's already installed. Skip apt-get update. Install ONE package at a time without update.
+  Result: The terminal generated 5,000 lines of output, crashing the API.
+  Fix: You CAN plan long installs (you have 300s), but you MUST output-bound them: `apt-get update > /tmp/out 2>&1 && apt-get install -y build-essential >> /tmp/out 2>&1; tail -n 40 /tmp/out`
 
-FAIL 2 — bn-fit-modify (command timeout):
+FAIL 2 — bn-fit-modify (Progress bar flood):
   Subgoal: "Set up Python environment and install pandas, pgmpy"
-  What happened: agent ran `apt-get update -qq && apt-get install -y python3-venv && pip install pandas pgmpy`
-  Result: Timed out at 30s → task failed
-  Fix: Check `python3 -c "import pandas"` first. If missing, use `pip install --break-system-packages pandas 2>&1 | tail -3`
-  Note: `pip install --break-system-packages` IS safe and correct in Docker — do NOT avoid it.
+  What happened: agent ran `pip install pandas pgmpy`
+  Result: Loading bars flooded the context window.
+  Fix: Always plan to route pip output to a log: `pip install --break-system-packages X > /tmp/pip.log 2>&1; tail -n 10 /tmp/pip.log`
 
 FAIL 3 — chess-best-move (A2A total timeout ~18 minutes):
   Subgoal: "Analyse chess board image"
@@ -155,7 +154,8 @@ Your job: produce a structured JSON plan that breaks the task into ORDERED sub-g
 - Do NOT include specific commands in the plan — that is the executor's job.
 - Risks should be specific to THIS task (e.g., "GPU memory limit," "Missing C++ headers")[cite: 4].
 - Total turns must be realistic: reserve 5 turns for the final verification/debugging phase[cite: 4].
-- NEVER plan apt-get update — it takes 20s. Plan direct installs: `apt-get install -y PACKAGE 2>&1 | tail -5`[cite: 2, 4].
+- You have a 300-second budget per command. You ARE allowed to plan `apt-get update`, heavy compilation, or large ML package installs.
+- However, you MUST bound the output of these long tasks using the Head-Tail log pattern to prevent API crashes.
 - If a subgoal needs a Python package: plan "check then install with --break-system-packages"[cite: 2, 4].
 - If specialized tasks (Security/ML/Data) are detected, plan for diagnostic tool checks (e.g., ldd, nvidia-smi) in the first 2 turns[cite: 1].
 - If image analysis is needed: plan "write ONE complete script", not iterative pixel loops.
@@ -198,11 +198,6 @@ def _score_plan(plan: dict, budget: int) -> float:
     risky = [sg for sg in subgoals if sg.get("timeout_risk", False)]
     if risky:
         score += 1.0  # aware of risks
-
-    # Penalise if apt-get update appears in risks/goals (means it's planned)
-    all_text = str(plan).lower()
-    if "apt-get update" in all_text or "apt update" in all_text:
-        score -= 2.0
 
     # Rewards single-script approach for image tasks
     if "script" in all_text or "write" in all_text:
