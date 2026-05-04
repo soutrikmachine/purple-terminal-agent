@@ -126,41 +126,60 @@ async def summarize_output(
     stderr: str,
     command: str,
     exit_code: int,
-    char_threshold: int = 3000,
+    char_threshold: int = 10000,
 ) -> str:
     """
     If combined output exceeds char_threshold, use CONTEXT_FILTER_MODEL to summarise.
     Returns filtered summary string, or original output if under threshold.
-    Falls back to simple truncation on any error — never blocks execution.
+    Falls back to simple truncation on any error — NEVER returns empty.
+
+    Threshold is 10000 chars (not 3000) — source code files, setup.py, .pyx files
+    are typically 3-8k and must be passed through verbatim for the LLM to reason about.
+    Only truly massive outputs (build logs, pip install, training logs) get filtered.
     """
     combined = stdout + stderr
     if len(combined) <= char_threshold:
-        return combined  # Under threshold — no filtering needed
+        return combined  # Under threshold — pass through verbatim
 
     logger.info("Context filter: output len=%d exceeds %d — summarising with %s",
                 len(combined), char_threshold, CONTEXT_FILTER_MODEL)
     try:
+        import asyncio
         client = get_client()
         user_msg = (
             f"Command: `{command}` (exit_code={exit_code})\n\n"
             f"stdout (len={len(stdout)}):\n{stdout[:8000]}\n\n"
             f"stderr (len={len(stderr)}):\n{stderr[:2000]}"
         )
-        response = await client.chat.completions.create(
-            model=CONTEXT_FILTER_MODEL,
-            messages=[
-                {"role": "system", "content": FILTER_SYSTEM},
-                {"role": "user", "content": user_msg},
-            ],
-            max_tokens=600,
-            temperature=0.0,
+        # 30-second timeout — filter must not burn task budget
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=CONTEXT_FILTER_MODEL,
+                messages=[
+                    {"role": "system", "content": FILTER_SYSTEM},
+                    {"role": "user", "content": user_msg},
+                ],
+                max_tokens=600,
+                temperature=0.0,
+            ),
+            timeout=30.0,
         )
-        summary = response.choices[0].message.content or ""
+        summary = (response.choices[0].message.content or "").strip()
         logger.info("Context filter: reduced %d → %d chars", len(combined), len(summary))
-        return f"[FILTERED by context filter — original {len(combined)} chars]\n{summary}"
+
+        # If filter returned empty or near-empty, fall back to truncation
+        if len(summary) < 50:
+            logger.warning("Context filter returned near-empty summary (%d chars) — using truncation", len(summary))
+            raise ValueError("empty summary")
+
+        return f"[FILTERED — original {len(combined)} chars]\n{summary}"
+
     except Exception as e:
         logger.warning("Context filter failed (%s) — using truncation fallback", e)
-        # Simple truncation fallback
-        head = combined[:1500]
-        tail = combined[-1500:]
-        return f"{head}\n\n...[{len(combined)-3000} chars truncated]...\n\n{tail}"
+        # Safe truncation: always preserve head + tail
+        head = combined[:4000]
+        tail = combined[-2000:]
+        omitted = len(combined) - 6000
+        if omitted > 0:
+            return f"{head}\n\n...[{omitted} chars omitted]...\n\n{tail}"
+        return combined

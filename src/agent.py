@@ -154,7 +154,7 @@ class AgentSession:
             stderr=stderr,
             command=last_cmd,
             exit_code=exit_code,
-            char_threshold=3000,
+            char_threshold=10000,
         )
         if not result_text.strip():
             result_text = f"(no output, exit code: {exit_code})"
