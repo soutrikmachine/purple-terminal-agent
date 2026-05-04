@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 MODEL   = os.environ.get("MODEL", "deepseek/deepseek-v4-flash")
 API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 BASE_URL = "https://openrouter.ai/api/v1"
+# Context filter — cheap model for summarising large command outputs before main LLM
+CONTEXT_FILTER_MODEL = os.environ.get("CONTEXT_FILTER_MODEL", MODEL)
 
 _client: AsyncOpenAI | None = None
 
@@ -99,3 +101,66 @@ async def complete_json(
             return json.loads(m.group(0))
         logger.error("Failed to parse JSON from LLM: %s", raw[:300])
         return {}
+
+
+FILTER_SYSTEM = """You are a command output summariser for a terminal agent.
+You receive raw stdout/stderr from a bash command and return a concise structured summary.
+
+Rules:
+- Keep all error messages VERBATIM (they are critical for debugging)
+- Keep all file paths, package names, version numbers verbatim
+- Keep the last 10 lines of output verbatim (most recent state matters)
+- Summarise repetitive lines (e.g. "Downloading... 1%... 2%...") into one line
+- Total output MUST be under 60 lines
+
+Format:
+SUMMARY: <one sentence of what happened>
+KEY_INFO: <important values: paths, versions, package names, ports>
+ERRORS: <any error messages verbatim, or "none">
+LAST_LINES:
+<last 10 lines of original output verbatim>"""
+
+
+async def summarize_output(
+    stdout: str,
+    stderr: str,
+    command: str,
+    exit_code: int,
+    char_threshold: int = 3000,
+) -> str:
+    """
+    If combined output exceeds char_threshold, use CONTEXT_FILTER_MODEL to summarise.
+    Returns filtered summary string, or original output if under threshold.
+    Falls back to simple truncation on any error — never blocks execution.
+    """
+    combined = stdout + stderr
+    if len(combined) <= char_threshold:
+        return combined  # Under threshold — no filtering needed
+
+    logger.info("Context filter: output len=%d exceeds %d — summarising with %s",
+                len(combined), char_threshold, CONTEXT_FILTER_MODEL)
+    try:
+        client = get_client()
+        user_msg = (
+            f"Command: `{command}` (exit_code={exit_code})\n\n"
+            f"stdout (len={len(stdout)}):\n{stdout[:8000]}\n\n"
+            f"stderr (len={len(stderr)}):\n{stderr[:2000]}"
+        )
+        response = await client.chat.completions.create(
+            model=CONTEXT_FILTER_MODEL,
+            messages=[
+                {"role": "system", "content": FILTER_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            max_tokens=600,
+            temperature=0.0,
+        )
+        summary = response.choices[0].message.content or ""
+        logger.info("Context filter: reduced %d → %d chars", len(combined), len(summary))
+        return f"[FILTERED by context filter — original {len(combined)} chars]\n{summary}"
+    except Exception as e:
+        logger.warning("Context filter failed (%s) — using truncation fallback", e)
+        # Simple truncation fallback
+        head = combined[:1500]
+        tail = combined[-1500:]
+        return f"{head}\n\n...[{len(combined)-3000} chars truncated]...\n\n{tail}"
