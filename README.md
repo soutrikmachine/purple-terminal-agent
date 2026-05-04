@@ -77,7 +77,7 @@ Phase 3 — Executor ReAct Loop (turns 2..MAX_TURNS)
   │    7 domain critics (git, security, ml, scientific, build, python, network)
   │    + generic fallback for docker, database, system, text
   │    Each critic has domain-specific APPROVE/REVISE rules
-  ├─ Simulated persistence: prefix command with cd {cwd} && export KEY=val &&
+  ├─ [**Dropped**]Simulated persistence: prefix command with cd {cwd} && export KEY=val &&
   ├─ Execute via exec_request (timeout=300s)
   ├─ Context filter: outputs >3000 chars → summarise with fast LLM
   │    Preserves: errors verbatim, file paths, last 10 lines

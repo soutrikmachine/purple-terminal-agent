@@ -30,7 +30,9 @@ _ANCHORS: dict[str, list[str]] = {
     "ml":       ["pytorch", "torch", "tensorflow", "huggingface", "transformers",
                  "bert", "gpt", "cuda", "fine-tune", "checkpoint", "embedding"],
     "scientific": ["bayesian", "mcmc", "sampling", "scipy", "numpy", "pandas",
-                   "statistics", "regression", "distribution", "parquet"],
+                   "statistics", "regression", "distribution", "parquet",
+                   "pgmpy", "stan", "rscript", "raman", "spectroscopy",
+                   "protein", "fasta", "dna"],
 }
 
 _DOMAIN_KEYWORDS: dict[str, list[str]] = {

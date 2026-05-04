@@ -109,13 +109,6 @@ class AgentSession:
         self.subgoals: list[dict] = []
         self.system_prompt   = ""
 
-        # ── Simulated persistence — track shell state across turns ────────────
-        # Green spawns a fresh bash process per exec_request. We reconstruct
-        # context by prefixing each command with known state.
-        self._cwd: str = ""                    # updated by parsing cd commands
-        self._env_vars: dict[str, str] = {}    # updated by parsing export commands
-        self._background_pids: list[str] = []  # tracked bg process info (advisory)
-
         # Phase flags
         self._recon_done    = False
         self._plan_done     = False
@@ -167,8 +160,6 @@ class AgentSession:
         if not self._recon_done:
             self._recon_done = True
             recon_snapshot = result_text
-            # Seed simulated persistence — get actual cwd from recon output
-            self._update_cwd_from_output(stdout)
             logger.info("Phase 2: Planning")
             domains_str = (
                 f"Primary: {self._domain_result.primary}, "
@@ -248,7 +239,7 @@ class AgentSession:
             llm_response = await complete(
                 system=self.system_prompt,
                 messages=self.messages,
-                max_tokens=1024,
+                max_tokens=2048,
                 temperature=0.2,
             )
         except Exception as e:
@@ -310,20 +301,38 @@ class AgentSession:
         if not command:
             # All extraction methods failed — send targeted format nudge
             logger.warning("No command found at turn %d — sending format nudge", self.turn)
-            nudge = (
-                "⚠️ FORMAT ERROR: Your response did not contain a command.\n\n"
-                "You MUST respond with EXACTLY this format:\n"
-                "<thought>brief reasoning</thought>\n"
-                "<command>the_bash_command_to_run</command>\n\n"
-                "Example:\n"
-                "<thought>I need to check what files exist first.</thought>\n"
-                "<command>ls -la /app</command>\n\n"
-                "Even if you are doing math or analysis, write it as a Python script:\n"
-                "<command>python3 -c \"print(2+2)\"</command>\n\n"
-                "Respond now with the format above. Do NOT explain. Just output the tags."
-            )
+
+            # Escalate after 2 consecutive nudge failures (e.g. chess-best-move prose loops)
+            nudge_count = sum(1 for m in self.messages[-6:]
+                              if m.get("role") == "user" and "FORMAT ERROR" in m.get("content", ""))
+
+            if nudge_count >= 2:
+                nudge = (
+                    "🚨 ESCALATION: You have failed to provide a command multiple times.\n\n"
+                    "You CANNOT output chess moves, analysis prose, or plain text as your answer.\n"
+                    "You MUST write an executable shell command or Python script.\n\n"
+                    "If you need to compute something (chess move, image analysis, math):\n"
+                    "<command>python3 << \'PYEOF\'\n"
+                    "# Write your complete solution as Python code\n"
+                    "# Print the final answer to stdout\n"
+                    "print(\'answer\')\n"
+                    "PYEOF</command>\n\n"
+                    "Respond NOW with only <command>...</command>. No explanation whatsoever."
+                )
+            else:
+                nudge = (
+                    "⚠️ FORMAT ERROR: Your response did not contain a command.\n\n"
+                    "You MUST respond with EXACTLY this format:\n"
+                    "<thought>brief reasoning</thought>\n"
+                    "<command>the_bash_command_to_run</command>\n\n"
+                    "Example:\n"
+                    "<thought>I need to check what files exist first.</thought>\n"
+                    "<command>ls -la /app</command>\n\n"
+                    "Even if you are doing math or analysis, write it as a Python script:\n"
+                    "<command>python3 -c \"print(2+2)\"</command>\n\n"
+                    "Respond now with the format above. Do NOT explain. Just output the tags."
+                )
             self.messages.append({"role": "user", "content": nudge})
-            # Use a minimal diagnostic rather than ls -la — at least learns something
             return json.dumps({"kind": "exec_request", "command": "echo 'FORMAT_RECOVERY' && ls -la && python3 --version 2>/dev/null", "timeout": 300})
 
         # ── Critic pre-flight ─────────────────────────────────────────────
@@ -347,131 +356,11 @@ class AgentSession:
                 "content": f"🔧 Critic safety note: {critic_note}\n   Original: `{command}`\n   Will execute: `{final_cmd}`"
             })
 
-        # ── Simulated persistence: wrap command with known shell state ────────
-        wrapped_cmd = self._wrap_with_state(final_cmd)
-        # Update state from this command (for next turn's wrapping)
-        self._update_shell_state(final_cmd)
-
         self.collected_commands.append(final_cmd)
         self.observation_history += f"\n$ {final_cmd}"
-        return json.dumps({"kind": "exec_request", "command": wrapped_cmd, "timeout": 300})
+        return json.dumps({"kind": "exec_request", "command": final_cmd, "timeout": 300})
 
 
-    # ── Simulated persistence helpers ─────────────────────────────────────────
-
-    def _wrap_with_state(self, command: str) -> str:
-        """
-        Prefix command with known shell state so each turn starts in the right place.
-        Green spawns a fresh bash shell per exec_request — this reconstructs context.
-        """
-        prefix_parts = []
-
-        # Restore working directory if known and not already set in command
-        if self._cwd and not command.strip().startswith("cd "):
-            prefix_parts.append(f"cd {self._cwd} 2>/dev/null || true")
-
-        # Restore key env vars (exclude very long ones)
-        for k, v in self._env_vars.items():
-            if len(v) < 200:  # skip huge vars like PATH additions
-                prefix_parts.append(f"export {k}={v!r}")
-
-        if prefix_parts:
-            prefix = " && ".join(prefix_parts) + " && "
-            logger.debug("Persistence prefix: %s", prefix[:100])
-            return prefix + command
-        return command
-
-    def _update_shell_state(self, command: str) -> None:
-        """
-        Parse executed command to update tracked shell state.
-        Called AFTER the command is sent, BEFORE receiving the result.
-        The result will update observation_history separately.
-        """
-        stripped = command.strip()
-
-        # Track cd commands
-        cd_match = re.match(r"^cd\s+(\S+)", stripped)
-        if cd_match:
-            target = cd_match.group(1)
-            if target == "-":
-                pass  # prev dir — can't track without result
-            elif target.startswith("/"):
-                self._cwd = target.rstrip("/") or "/"
-            elif self._cwd:
-                # relative cd — best effort
-                if target == "..":
-                    self._cwd = "/".join(self._cwd.rstrip("/").split("/")[:-1]) or "/"
-                else:
-                    self._cwd = self._cwd.rstrip("/") + "/" + target
-
-        # Track export — simple key=value patterns
-        for line in stripped.splitlines():
-            exp_m = re.match(r'export\s+([A-Z_][A-Z0-9_]*)=(.+)', line.strip())
-            if exp_m:
-                key = exp_m.group(1)
-                val = exp_m.group(2).strip("'\"")
-                if key not in ('PATH', 'LD_LIBRARY_PATH', 'LD_PRELOAD'):
-                    self._env_vars[key] = val
-
-    def _update_cwd_from_output(self, stdout: str) -> None:
-        """
-        After RECON or explicit pwd command, update tracked cwd from actual output.
-        More reliable than parsing cd commands.
-        """
-        # Look for "=== PWD ===" section from RECON_CMD output
-        # Look for === PWD === section from RECON_CMD output
-        for i, line in enumerate(stdout.splitlines()):
-            if '=== PWD ===' in line and i + 1 < len(stdout.splitlines()):
-                pwd_line = stdout.splitlines()[i + 1].strip()
-                if pwd_line.startswith('/'):
-                    self._cwd = pwd_line
-                    return
-            logger.info("Persistence: cwd set from recon to %s", self._cwd)
-            return
-        # Look for bare pwd output (single /path line after $ pwd)
-        for line in stdout.splitlines():
-            line = line.strip()
-            if line.startswith("/") and " " not in line and len(line) > 1:
-                self._cwd = line
-                logger.info("Persistence: cwd set from pwd output to %s", self._cwd)
-                return
-
-
-    # ── Simulated persistence helpers ─────────────────────────────────────────
-    # Persistence helpers to inject into AgentSession
-
-    def _wrap_with_state(self, command: str) -> str:
-        prefix_parts = []
-        if self._cwd and not command.strip().startswith("cd "):
-            prefix_parts.append(f"cd {self._cwd} 2>/dev/null || true")
-        for k, v in self._env_vars.items():
-            if len(v) < 200:
-                safe_v = v.replace("'", "'\\''")
-                prefix_parts.append(f"export {k}='{safe_v}'")
-        if prefix_parts:
-            return " && ".join(prefix_parts) + " && " + command
-        return command
-
-    def _update_shell_state(self, command: str) -> None:
-        stripped = command.strip()
-        # Track cd
-        import re as _re2
-        cd_match = _re2.match(r"^cd\s+(\S+)", stripped)
-        if cd_match:
-            target = cd_match.group(1)
-            if target.startswith("/"):
-                self._cwd = target.rstrip("/") or "/"
-            elif self._cwd and target == "..":
-                self._cwd = "/".join(self._cwd.rstrip("/").split("/")[:-1]) or "/"
-            elif self._cwd and target != "-":
-                self._cwd = self._cwd.rstrip("/") + "/" + target
-        # Track export — simple key=value
-        for line in stripped.splitlines():
-            exp = _re2.match(r"export\s+([A-Z_][A-Z0-9_]*)=(.+)", line.strip())
-            if exp:
-                key, val = exp.group(1), exp.group(2).strip("'\"")
-                if key not in ("PATH", "LD_LIBRARY_PATH", "LD_PRELOAD"):
-                    self._env_vars[key] = val
     async def _handle_done(self, done_content: str) -> str:
         """
         Agent says done. We want to self-verify but we can't run commands directly.

@@ -269,7 +269,7 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
         result = await complete_json(
             system=PLANNER_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
-            max_tokens=1500,
+            max_tokens=2048,
             temperature=0.4,  # slightly higher for Best-of-N diversity
             model_override=PLANNER_MODEL,
         )
@@ -334,7 +334,7 @@ Review the plan for the 6 issues listed. Return the improved plan JSON."""
         refined = await complete_json(
             system=CRITIQUE_SYSTEM,
             messages=[{"role": "user", "content": critique_prompt}],
-            max_tokens=1500,
+            max_tokens=2048,
             temperature=0.1,   # deterministic critique
             model_override=PLANNER_MODEL,
         )
