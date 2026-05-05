@@ -44,8 +44,7 @@ def get_sync_client() -> OpenAI:
 
 
 def llm_query_sync(prompt: str, max_tokens: int = 2048) -> str:
-    """Synchronous sub-LLM call for use inside REPL (runs in asyncio.to_thread).
-    Uses SUB_MODEL (default: V4 Flash) — cheap and fast for context inspection."""
+    """Synchronous sub-LLM call for use inside REPL (runs in asyncio.to_thread)."""
     try:
         client = get_sync_client()
         resp = client.chat.completions.create(
@@ -67,7 +66,7 @@ async def complete(
     temperature: float = 0.4,
     model_override: str | None = None,
 ) -> str:
-    """Free-form text completion. Used by planner internals."""
+    """Free-form text completion."""
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
@@ -89,7 +88,7 @@ async def complete_json(
     temperature: float = 0.2,
     model_override: str | None = None,
 ) -> dict:
-    """JSON-mode completion. Used by planner and critic."""
+    """JSON-mode completion."""
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
@@ -104,7 +103,8 @@ async def complete_json(
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
-    clean = re.sub(r"```json\s*|\s*```", "", raw).strip()
+    clean = re.sub(r"```json\s*|\s*
+```", "", raw).strip()
     try:
         return json.loads(clean)
     except json.JSONDecodeError:
@@ -132,11 +132,6 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "command": {"type": "string", "description": "The bash command to run."},
-                    "timeout": {
-                        "type": "integer",
-                        "description": "Seconds; minimum 60, maximum 300. Default 300. Use 300 for installs, builds, long scripts. Never use <60.",
-                        "minimum": 60, "maximum": 300,
-                    },
                 },
                 "required": ["command"],
             },
@@ -150,7 +145,6 @@ TOOLS = [
                 "Execute Python in a persistent in-process REPL. "
                 "Globals: `context` (list of all bash/repl results), "
                 "`llm_query(prompt)` (fast sub-LLM for large output processing). "
-                "Use context[-1]['stdout'] to inspect full bash output. "
                 "NEVER run shell commands here — use bash instead."
             ),
             "parameters": {
@@ -187,8 +181,7 @@ async def complete_with_tools(
     temperature: float = 0.2,
     model_override: str | None = None,
 ) -> dict:
-    """Tool-use completion for the REPL executor loop.
-    Returns {name, arguments, raw_message}."""
+    """Tool-use completion with DeepSeek/OpenRouter sanitization."""
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
@@ -200,14 +193,37 @@ async def complete_with_tools(
         temperature=temperature,
     )
     msg = response.choices[0].message
+    
     if msg.tool_calls:
         tc = msg.tool_calls[0]
+        raw_args = tc.function.arguments or "{}"
+        
+        # DeepSeek formatting artifacts cleanup
+        clean_args = re.sub(r"<think>.*?</think>", "", raw_args, flags=re.DOTALL)
+        clean_args = re.sub(r"```json\s*|\s*```", "", clean_args).strip()
+        
         try:
-            args = json.loads(tc.function.arguments)
+            args = json.loads(clean_args)
         except (json.JSONDecodeError, ValueError):
+            logger.warning("Corrupted JSON in tool args, dropping to fallback.")
             args = {}
+            
         return {"name": tc.function.name, "arguments": args, "raw_message": msg}
-    # No tool call despite tool_choice=required — fallback
-    content = (msg.content or "").strip()
-    logger.warning("No tool call despite tool_choice=required — parsing content as bash")
-    return {"name": "bash", "arguments": {"command": content or "ls -la"}, "raw_message": msg}
+        
+    # DeepSeek Fallback: If it ignores tool_calls and dumps JSON in content
+    clean_content = re.sub(r"<think>.*?</think>", "", msg.content or "", flags=re.DOTALL).strip()
+    clean_content = re.sub(r"```json\s*|\s*
+```", "", clean_content).strip()
+    
+    if clean_content.startswith("{"):
+        try:
+            parsed = json.loads(clean_content)
+            if "command" in parsed:
+                return {"name": "bash", "arguments": parsed, "raw_message": msg}
+            if "code" in parsed:
+                return {"name": "repl", "arguments": parsed, "raw_message": msg}
+        except:
+            pass
+
+    logger.warning("No valid tool call parsed. Forcing diagnostic bash.")
+    return {"name": "bash", "arguments": {"command": "ls -la"}, "raw_message": msg}
