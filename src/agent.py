@@ -329,7 +329,7 @@ class AgentSession:
                 result = await complete_with_tools(
                     system=self.system_prompt,
                     messages=self.history,
-                    max_tokens=1024,
+                    max_tokens=1536,
                     temperature=0.2,
                 )
             except Exception as e:
@@ -402,14 +402,14 @@ class AgentSession:
                     self.history.append({"role": "user", "content": "[empty bash command — provide a command]"})
                     continue
 
-                tmo = int(args.get("timeout", 30))
-                tmo = max(1, min(tmo, 300))
+                tmo = int(args.get("timeout", 300))
+                tmo = max(60, min(tmo, 300))  # min 60s, max 300s — LLM often underestimates
 
                 # ── Critic pre-flight ─────────────────────────────────────────
                 current_sg = (self.subgoals[min(self.current_sg_idx, len(self.subgoals)-1)]
                               if self.subgoals else {})
                 obs_history = " | ".join(
-                    f"{e.get('command','')[:40]}→exit={e.get('exit_code',0)}"
+                    f"{e.get('command','')[:40]}→exit={e.get('exit_code',0)} stdout={e.get('stdout','')[:80]}"
                     for e in self.transcript[-3:]
                     if e.get("kind") == "bash"
                 )

@@ -134,8 +134,8 @@ TOOLS = [
                     "command": {"type": "string", "description": "The bash command to run."},
                     "timeout": {
                         "type": "integer",
-                        "description": "Seconds; clamped to [1,300]. Default 30.",
-                        "minimum": 1, "maximum": 300,
+                        "description": "Seconds; minimum 60, maximum 300. Default 300. Use 300 for installs, builds, long scripts. Never use <60.",
+                        "minimum": 60, "maximum": 300,
                     },
                 },
                 "required": ["command"],
