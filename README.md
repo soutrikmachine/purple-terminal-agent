@@ -5,7 +5,10 @@
 [![Terminal Bench 2.0](https://img.shields.io/badge/Benchmark-Terminal%20Bench%202.0-blue)](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
 [![Docker](https://img.shields.io/badge/Docker-rimodock%2Fpurple--terminal--agent-blue)](https://hub.docker.com/r/rimodock/purple-terminal-agent)
 
-A **RLM-style persistent REPL agent** with hierarchical planning, domain-specialist critics, and constitutional self-critique for [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/terminal-bench-2-0) — 89 hard, realistic CLI tasks.
+A **Hierarchical Planner + Critic Pre-flight + RAG** terminal agent for the
+[AgentX–AgentBeats](https://rdi.berkeley.edu/agentx-agentbeats) Sprint 3 competition,
+evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
+— 89 hard, realistic command-line tasks.
 
 ---
 
@@ -21,99 +24,111 @@ Across 8 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. 
 | +300s timeout | **24/89** | Extended command timeout | Build tasks unlocked |
 | +Permissive extraction | **25/89** | 4-method XML tag fallback | Reduced format failures |
 | +Domain scaffolds + temp 0.2 | **28/89** | 7 domain specialists, subgoal signalling | Best stable score |
-| v0.3 (context filter broken) | **19/89** | Filter returned empty on source files | Context filter wrong approach |
-| v0.3 (faulty persistence) | **22/89** | Simulated cwd tracking | Shell state reconstruction fails |
-| v0.3 (max_tokens=2048) | **21-24/89** | Longer outputs → 300s command timeouts | Output length matters |
-| **v0.4 (current)** | *pending* | RLM-style REPL + tool-use + planner timeouts | Real persistence |
 
 **Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$2.50/run) has demonstrated capability across 42 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
 
 ---
 
-## Architecture (v0.4 — RLM-style REPL)
+## Architecture
 
 ```
-Task Message (Green Agent → Purple via A2A)
+Task Message (from green agent via A2A)
   │
   ▼
-Phase 0 — Session Initialisation
-  ├─ Multi-label domain detection (12 domains)
-  ├─ Domain-conditioned system prompt:
-  │    [Primary domain → full reasoning scaffold]
-  │    [Secondary domains → pitfall warnings]
-  │    [TF-IDF RAG hints from oracle tasks]
-  │    [Session memory — verified sequences]
-  │    [Tool-use instructions: bash / repl / final]
-  └─ Persistent transcript list initialised (Python object, never loses data)
-
-  ▼
-Phase 1 — RECON (Turn 0)
-  └─ bash(RECON_CMD) → pwd, ls, find, env, git log, which tools
-
-  ▼
-Phase 2 — Hierarchical Planning (Best-of-3 + constitutional critique)
-  ├─ 3 parallel plan candidates with 45s timeout each
-  ├─ Scored on: subgoal count, verification step, turn budget, timeout awareness
-  └─ Constitutional critique (30s timeout) refines the winner
-
-  ▼
-Phase 3 — RLM Inner Loop (up to 8 tool calls per A2A turn)
+Phase 0 — Setup
+  ├─ Extract exec_result
+  ├─ Multi-label domain detection (primary + up to 3 secondaries)
+  ├─ Build system prompt:
+  │    [Base ReAct protocol]
+  │    [Primary specialist — full reasoning scaffold]
+  │    [Secondary specialists — pitfall sections only]  ← anti-satiation
+  │    [Task RAG hints — process-oriented, not templates]
+  │    [Session memory — verified sequences from earlier tasks]
   │
-  ├─ bash(command, timeout) → exec_request to green → exec_result received
-  │    └─ Critic pre-flight: 7 domain critics (git/security/ml/scientific/build/python/network)
-  │         APPROVE or REVISE before sending to green
-  │
-  ├─ repl(code) → executes Python IN-PROCESS instantly (no A2A round trip)
-  │    Globals available: context (full transcript list), llm_query(prompt)
-  │    context[-1]['stdout'] → full untruncated bash output, always accessible
-  │    llm_query(prompt) → synchronous sub-LLM (V4 Flash) for large output processing
-  │    Example: print(llm_query(f"extract key schedule: {context[-1]['stdout'][:20000]}"))
-  │
-  └─ final(output) → store memory → return {"kind":"final"} to green
+  ▼
+Phase 1 — Recon (Turn 0, always)
+  └─ Fixed env fingerprint: pwd, ls, find, env, git log, which tools
+  
+  ▼
+Phase 2 — Hierarchical Planning (1 LLM call, no execution)
+  └─ Planner(task, recon, domains, RAG) → ordered sub-goals JSON
+     → inference-time depth scaling: commit to plan before acting
 
   ▼
-Phase 4 — Memory Update
-  └─ Verified command sequences stored per domain for same-session tasks
-```
+Phase 3 — Executor ReAct Loop (per sub-goal)
+  ├─ LLM → <thought> + <command>
+  ├─ Critic Pre-flight → APPROVE or REVISE
+  │    Checks: interactive hang, blind copying, destructive ops, wrong flags
+  ├─ Execute via POST /exec/{token}
+  ├─ Observe stdout/stderr/exit_code
+  ├─ Error Recovery: 3 consecutive failures → sub-goal replan injection
+  └─ Loop until sub-goal done or turns exhausted
 
----
+  ▼
+Phase 4 — Self-Verification (before any <done>)
+  ├─ Find test scripts: *.sh, *.bats, test_*.py
+  ├─ Execute each → check exit codes
+  ├─ FAIL → push back into executor loop
+  └─ PASS → proceed to done
 
-## Why REPL Persistence Works (vs Simulated Shell Persistence)
+  ▼
+Phase 5 — Task Memory Update
+  └─ Store verified command sequence for future tasks (same eval session)
 
-Previous approach (failed): Track `_cwd` and `_env_vars` from sent commands, prefix next command with `cd /path && export VAR=val &&`. Failed because state updated before seeing if the command succeeded — silent failures cascaded.
-
-Current approach: `self.transcript` is a Python list that lives in the `AgentSession` object in memory. Every bash result is appended **after** receiving the exec_result. Between A2A turns, the Python object persists unchanged. The agent inspects past results via `context[-2]['stdout']` — no reconstruction, no prediction, no fragile prefixing.
-
-```python
-# What the agent can now do in repl:
-errors = [l for l in context[-1]['stdout'].split('\n') if 'error:' in l.lower()]
-build_dir = next(c['command'] for c in context if 'cd' in c.get('command',''))
-summary = llm_query(f"Extract missing dependencies from: {context[-1]['stderr'][:10000]}")
+  ▼
+Return completion summary to green agent
 ```
 
 ---
 
-## Key Design Decisions
+## Inference-Time Scaling
 
-**Three tools instead of XML tags:** `bash` / `repl` / `final` via OpenAI function-calling format. The LLM cannot output prose without calling a tool (`tool_choice="required"`). Eliminates all format failures that previously wasted hundreds of turns.
+This agent scales depth (not width) at inference time through three mechanisms:
 
-**repl runs in-process:** No A2A round trip, no network call, executes in milliseconds. The agent uses repl freely for context inspection and llm_query — it doesn't cost a bash turn.
+| Mechanism | How it scales | Where |
+|-----------|--------------|-------|
+| **Hierarchical Planner** | Forces full-task reasoning before any modifying command | Phase 2 |
+| **Critic Pre-flight** | One extra LLM call per command: reason about failure modes before executing | Phase 3 per turn |
+| **Task RAG** | Retrieved oracle patterns from similar tasks provide structural priors | Phase 0 |
 
-**llm_query as deliberate tool:** Instead of a blind automatic context filter, the agent decides when to summarise and what to summarise. `llm_query(context[-1]['stdout'][:20000])` is called explicitly by the agent when it determines the output is too large to reason about directly.
-
-**Planner timeouts (45s/30s):** OpenRouter routes to different providers per call. Previously one slow provider call could block Best-of-3 planning for 2+ minutes per task. Now each candidate times out at 45s and falls back gracefully.
+Unlike Best-of-N sampling (scales width, plateau-prone at fixed temperature),
+these mechanisms scale **reasoning depth** — each adds compute that directly
+reduces the probability of a specific class of failure.
 
 ---
 
-## Inference-Time Depth Scaling
+## Anti-Satiation / Anti-Reward-Hacking Design
 
-| Mechanism | Depth added | Failure class prevented |
-|-----------|------------|------------------------|
-| Hierarchical Planner (Best-of-3) | Full task decomposition before execution | Premature action, wrong sequencing |
-| Constitutional Critique | Plan audit for impossible steps | 30 wasted turns on unachievable subgoals |
-| Domain-specialist Critic | Per-bash safety check with domain context | Wrong flags, interactive hangs, blind copying |
-| REPL with llm_query | In-process large output processing | Context window overflow on build logs |
-| Persistent transcript | Full output history always accessible | State loss between A2A turns |
+Key design decisions to prevent the "instruction satiation" failure mode
+(model copying ICL examples instead of reasoning):
+
+**1. ICL as reasoning scaffolds, not solution templates**
+```
+❌ Template (causes copying):
+   "To squash commits: git rebase -i HEAD~3"
+
+✅ Scaffold (forces reasoning):
+   "Squashing requires knowing exact commit count. Read git log first.
+    Non-interactive rebase needs GIT_SEQUENCE_EDITOR — the exact sed command
+    depends on how many commits you need to squash."
+```
+
+**2. Multi-domain: secondaries inject pitfalls only, never examples**
+- Primary domain → full scaffold (diagnostics + pitfalls + anchors + 1 process example)
+- Secondary domains → pitfall warnings only (1 short paragraph each)
+- This caps context injection without losing cross-domain awareness
+
+**3. Critic explicitly checks for blind copying**
+- Critic prompt includes: "Is this command grounded in observed state, or copied from memory?"
+- Commands referencing paths/values not seen in observations → REVISE
+
+**4. Recon-grounded reasoning**
+- Turn 0 forces the model to read actual env state before planning
+- Planner receives observed reality, not assumed state
+
+**5. Task memory only stores verifier-confirmed sequences**
+- A command sequence enters memory ONLY after self-verification passes
+- Prevents the cache itself from propagating unverified patterns
 
 ---
 
@@ -122,22 +137,22 @@ summary = llm_query(f"Extract missing dependencies from: {context[-1]['stderr'][
 ```
 purple-terminal-agent/
 ├── src/
-│   ├── server.py       # FastAPI A2A server (JSON-RPC 2.0, port 9009)
-│   ├── agent.py        # RLM-style REPL orchestrator (bash/repl/final tools)
-│   ├── planner.py      # Best-of-3 + constitutional critique planner
-│   ├── critic.py       # 7 domain-specialist critics + generic fallback
-│   ├── executor.py     # Exec API client (kept for compatibility)
-│   ├── specialist.py   # 12-domain detection + prompt fusion engine
-│   ├── rag.py          # Pure-Python TF-IDF RAG over terminal-bench oracle tasks
-│   ├── memory.py       # Session-scoped per-domain verified command cache
-│   ├── verifier.py     # Self-verification (test file runner)
-│   └── llm.py          # OpenRouter client + tool-use + sync sub-LLM
+│   ├── server.py       # A2A server (port 9009)
+│   ├── agent.py        # Main orchestrator — full pipeline
+│   ├── planner.py      # Hierarchical planner (Phase 2)
+│   ├── critic.py       # Pre-flight critic with fast local checks
+│   ├── executor.py     # Exec API HTTP client (adaptive timeouts, retry)
+│   ├── specialist.py   # Multi-label detection + prompt fusion
+│   ├── rag.py          # Pure-Python TF-IDF RAG over task index
+│   ├── memory.py       # Session-scoped per-domain command cache
+│   ├── verifier.py     # Self-verification (run test files before done)
+│   └── llm.py          # OpenRouter client (single LLM config point)
 ├── scripts/
-│   └── build_task_index.py
+│   └── build_task_index.py  # Build-time: clone + index terminal-bench-2 tasks
 ├── tests/
-│   └── test_agent.py
+│   └── test_agent.py   # Unit tests (no network required)
 ├── .github/workflows/
-│   └── ci.yml
+│   └── ci.yml          # Test + lint + push to docker.io/rimodock
 ├── Dockerfile
 ├── pyproject.toml
 ├── amber-manifest.json5
@@ -148,20 +163,17 @@ purple-terminal-agent/
 
 ## Specialist Domains
 
-| Domain | Coverage | Critic |
-|--------|----------|--------|
-| `git` | rebase, cherry-pick, reflog, filter-branch | ✅ Domain-specific |
-| `security` | cryptanalysis, hash cracking, XSS bypass, secrets | ✅ Domain-specific |
-| `ml` | PyTorch, HuggingFace, training, inference, checkpoints | ✅ Domain-specific |
-| `scientific` | R/Stan, pgmpy, Bayesian, curve fitting, bioinformatics | ✅ Domain-specific |
-| `build` | make, cmake, gcc, cargo, Cython, cross-compilation | ✅ Domain-specific |
-| `python` | asyncio, venv, pip, pytest, scripts | ✅ Domain-specific |
-| `network` | nginx, curl, grpc, service setup, ports | ✅ Domain-specific |
-| `docker` | Dockerfile, multi-stage, layer cache | Generic fallback |
-| `database` | SQLite, PostgreSQL, schema | Generic fallback |
-| `system` | systemctl, crontab, chmod | Generic fallback |
-| `text` | jq, awk, sed, grep, CSV/JSON | Generic fallback |
-| `generic` | universal scaffold | Fallback |
+| Domain | Anchor keywords | Primary scaffold covers |
+|--------|----------------|------------------------|
+| `git` | git, rebase, squash, cherry-pick | Non-interactive rebase, reflog, patch workflow |
+| `docker` | docker, dockerfile, container | Multi-stage builds, layer caching, build errors |
+| `python` | python3, pip, virtualenv | venv activation, traceback reading, import errors |
+| `database` | sqlite3, postgres, psql | Schema inspection, connection, SQL syntax |
+| `network` | curl, wget, nginx, http | Redirects, auth headers, service readiness |
+| `build` | makefile, cmake, gcc | Missing headers/libs, parallel build, CMake |
+| `system` | systemctl, crontab, chmod | Service mgmt in containers, cron PATH, permissions |
+| `text` | jq, awk, sed, grep | Regex, CSV edge cases, file inspection first |
+| `generic` | (fallback) | Universal orient → plan → act → verify protocol |
 
 ---
 
@@ -170,15 +182,24 @@ purple-terminal-agent/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | required | OpenRouter API key |
-| `MODEL` | `deepseek/deepseek-v4-flash` | Executor model (bash/repl/final loop) |
-| `PLANNER_MODEL` | same as MODEL | Planner model (Best-of-3 + critique) |
-| `SUB_MODEL` | same as MODEL | Sub-LLM for llm_query inside REPL |
-| `MAX_TURNS` | `30` | Max bash turns per task |
-| `PLAN_BEST_OF_N` | `3` | Plan candidates generated (1 to disable) |
+| `MODEL` | `deepseek/deepseek-v4-flash` | Model via OpenRouter |
+| `PLANNER_MODEL` | Optional | via OpenRouter |
+| `MAX_TURNS` | `30` | Max ReAct turns per task |
 | `PORT` | `9009` | A2A server port |
 | `TASK_INDEX_PATH` | `/app/data/task_index.json` | RAG index location |
 
-**To upgrade to V4 Pro:** Set `MODEL` and `PLANNER_MODEL` to `deepseek/deepseek-v4-pro`. Keep `SUB_MODEL` as V4 Flash for cheap, fast context processing inside repl.
+---
+
+## Setup for GitHub Secrets (CI/CD)
+
+Add these to your GitHub repository secrets:
+
+| Secret | Value |
+|--------|-------|
+| `DOCKERHUB_USERNAME` | `your dockerhub username` |
+| `DOCKERHUB_TOKEN` | your Docker Hub access token |
+
+CI workflow: test → build → push to `docker.io/..../purple-terminal-agent:latest` on every merge to `main`.
 
 ---
 
@@ -189,65 +210,55 @@ git clone https://github.com/soutrikmachine/purple-terminal-agent
 cd purple-terminal-agent
 
 # Install deps
-pip install openai httpx pydantic uvicorn tenacity fastapi
+pip install openai httpx pydantic uvicorn tenacity a2a-sdk
 
-# Build RAG task index (optional, needs internet)
+# Build task index (optional, needs git and internet)
 python scripts/build_task_index.py --output /tmp/task_index.json
 
 # Run agent
 OPENROUTER_API_KEY=sk-or-... \
-MODEL=deepseek/deepseek-v4-flash \
 TASK_INDEX_PATH=/tmp/task_index.json \
 python src/server.py --port 9009
 
-# Health check
+# Verify
 curl http://localhost:9009/health
-curl http://localhost:9009/.well-known/agent-card.json
+curl http://localhost:9009/.well-known/agent.json
 
-# Unit tests (no network required)
+# Unit tests (no network)
 pytest tests/ -v
 ```
 
 ---
 
-## CI/CD
+## AgentBeats Submission
 
-| Secret | Value |
-|--------|-------|
-| `DOCKERHUB_USERNAME` | `rimodock` |
-| `DOCKERHUB_TOKEN` | Docker Hub access token |
-
-CI: test → build → push `rimodock/purple-terminal-agent:latest` on every merge to `main`.
-
----
-
-## Research Directions
-
-**Correct persistence in stateless A2A agents:** Our key finding is that Python object persistence (`self.transcript` list) is robust where shell state reconstruction (`cd /path &&` prefix) is fragile. The former updates from observed results; the latter predicts from sent commands. This distinction generalises to any multi-turn agent operating over a stateless execution protocol.
-
-**Abstraction-execution gap:** V4 Pro planner + V4 Flash executor (12/89) vs V4 Flash for both (28/89) showed that plan concreteness, not plan quality, is the binding constraint when using mismatched model capabilities.
-
-**Domain-conditioned compute allocation:** Next direction — allocate more compute to turns where domain-specific reasoning is most uncertain, rather than uniformly per turn.
+1. Push to `main` → CI builds and pushes `.../purple-terminal-agent:latest`
+2. Go to [agentbeats.dev/register-agent](https://agentbeats.dev/register-agent)
+3. Select **Purple**, enter image: `docker.io/.../purple-terminal-agent:latest`
+4. Submit the `amber-manifest.json5` URL
+5. Go to [Terminal Bench 2.0 Quick Submit](https://agentbeats.dev/agentbeater/terminal-bench-2-0/submit)
+6. Select your agent, add secret `OPENROUTER_API_KEY`
+7. Submit
 
 ---
 
 ## Roadmap
 
-| Version | Addition | Status |
-|---------|----------|--------|
-| v0.2 | Multi-turn A2A, hierarchical planner, critic, RAG, memory | ✅ |
-| v0.3 | Constitutional critique, domain critics, subgoal signalling, temp=0.2 | ✅ |
-| v0.4 | RLM REPL (bash/repl/final tools), persistent transcript, llm_query, planner timeouts | ✅ Current |
-| v0.5 | V4 Pro executor validation; domain-conditioned compute allocation | Planned |
+| Phase | Addition | Status |
+|-------|----------|--------|
+| **v0.2** | Hierarchical Planner + Critic + RAG + Memory + Verify | ✅ This release |
+| **v0.3** | Domain-specialist critic sub-agent (full Approach 3) | ✅ This release |
+| **v0.4** | Multi-turn critic ↔ executor loop (drug-discovery TIR pattern) | After v0.3 score |
 
 ---
 
-## Competition
+## Competition Details
 
 - **Competition:** [AgentX–AgentBeats Sprint 3](https://rdi.berkeley.edu/agentx-agentbeats)
-- **Benchmark:** [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/terminal-bench-2-0) — 89 hard CLI tasks
+- **Track:** Coding Agent (Apr 13 – May 3, 2026)
+- **Green Agent:** [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
 - **Paper:** [Terminal-Bench: arxiv.org/abs/2601.11868](https://arxiv.org/abs/2601.11868)
-- **Model:** DeepSeek V4 Flash via OpenRouter (~$2.50/run)
+- **Metric:** Task pass rate across 89 tasks, verified by Harbor
 
 ---
 
