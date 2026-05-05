@@ -239,7 +239,7 @@ class AgentSession:
             llm_response = await complete(
                 system=self.system_prompt,
                 messages=self.messages,
-                max_tokens=2048,
+                max_tokens=1024,
                 temperature=0.2,
             )
         except Exception as e:

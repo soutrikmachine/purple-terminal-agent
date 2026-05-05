@@ -236,8 +236,10 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
 """
 
     if PLAN_BEST_OF_N <= 1:
-        # Single plan — original behaviour
-        return await _single_plan(user_content, task_text)
+        # Single plan + constitutional critique
+        result = await _single_plan(user_content, task_text)
+        result = await _critique_plan(result, task_text, budget)
+        return result
 
     # ── Best-of-N: generate N plans in parallel, pick best ───────────────────
     logger.info("Best-of-N planning: generating %d candidates (model=%s)", PLAN_BEST_OF_N, PLANNER_MODEL)
@@ -257,9 +259,6 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
         "Best-of-%d: picked plan score=%.1f from %d valid candidates | subgoals=%d",
         PLAN_BEST_OF_N, best_score, len(valid), len(best_plan.get("subgoals", []))
     )
-
-    # ── Constitutional critique: refine the winner ────────────────────────────
-    best_plan = await _critique_plan(best_plan, task_text, budget)
     return best_plan
 
 
