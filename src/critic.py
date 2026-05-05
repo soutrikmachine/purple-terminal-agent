@@ -366,7 +366,7 @@ Is this command safe and correct to execute?"""
         result = await complete_json(
             system=critic_system,
             messages=[{"role": "user", "content": user_content}],
-            max_tokens=256,
+            max_tokens=512,
             temperature=0.1,
         )
 
