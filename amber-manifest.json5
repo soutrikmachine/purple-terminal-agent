@@ -17,7 +17,6 @@
       "MAX_TURNS": "30",
       "MODEL": "deepseek/deepseek-v4-flash",
       "PLANNER_MODEL": "deepseek/deepseek-v4-flash",
-      "SUB_MODEL": "deepseek/deepseek-v4-flash",
       "TASK_INDEX_PATH": "/app/data/task_index.json",
       "OPENROUTER_API_KEY": "${config.openrouter_api_key}"
     }
