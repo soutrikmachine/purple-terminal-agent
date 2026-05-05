@@ -103,8 +103,7 @@ async def complete_json(
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
-    clean = re.sub(r"```json\s*|\s*
-```", "", raw).strip()
+    clean = re.sub(r"`{3}json\s*|\s*`{3}", "", raw).strip()
     try:
         return json.loads(clean)
     except json.JSONDecodeError:
@@ -200,7 +199,7 @@ async def complete_with_tools(
         
         # DeepSeek formatting artifacts cleanup
         clean_args = re.sub(r"<think>.*?</think>", "", raw_args, flags=re.DOTALL)
-        clean_args = re.sub(r"```json\s*|\s*```", "", clean_args).strip()
+        clean_args = re.sub(r"`{3}json\s*|\s*`{3}", "", clean_args).strip()
         
         try:
             args = json.loads(clean_args)
@@ -212,8 +211,7 @@ async def complete_with_tools(
         
     # DeepSeek Fallback: If it ignores tool_calls and dumps JSON in content
     clean_content = re.sub(r"<think>.*?</think>", "", msg.content or "", flags=re.DOTALL).strip()
-    clean_content = re.sub(r"```json\s*|\s*
-```", "", clean_content).strip()
+    clean_content = re.sub(r"`{3}json\s*|\s*`{3}", "", clean_content).strip()
     
     if clean_content.startswith("{"):
         try:
