@@ -1,11 +1,11 @@
 """
 LLM client — OpenRouter via OpenAI-compatible API.
 
-All LLM calls in the system go through this module so model/key config
-is in exactly one place. Provides two call modes:
-
-  complete()       → free-form text (for executor ReAct turns)
-  complete_json()  → structured JSON (for planner + critic)
+v0.4: RLM-style REPL architecture.
+  complete()            → free-form text (planner internals)
+  complete_json()       → structured JSON (planner + critic)
+  complete_with_tools() → tool-use (bash/repl/final executor loop)
+  llm_query_sync()      → synchronous sub-LLM call from inside REPL thread
 """
 
 from __future__ import annotations
@@ -15,18 +15,18 @@ import logging
 import os
 import re
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-MODEL   = os.environ.get("MODEL", "deepseek/deepseek-v4-flash")
-API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-BASE_URL = "https://openrouter.ai/api/v1"
-# Context filter — cheap model for summarising large command outputs before main LLM
-CONTEXT_FILTER_MODEL = os.environ.get("CONTEXT_FILTER_MODEL", MODEL)
+MODEL     = os.environ.get("MODEL", "deepseek/deepseek-v4-flash")
+API_KEY   = os.environ.get("OPENROUTER_API_KEY", "")
+BASE_URL  = "https://openrouter.ai/api/v1"
+SUB_MODEL = os.environ.get("SUB_MODEL", MODEL)  # sub-LLM for llm_query inside REPL
 
-_client: AsyncOpenAI | None = None
+_client:      AsyncOpenAI | None = None
+_sync_client: OpenAI | None      = None
 
 
 def get_client() -> AsyncOpenAI:
@@ -34,6 +34,29 @@ def get_client() -> AsyncOpenAI:
     if _client is None:
         _client = AsyncOpenAI(api_key=API_KEY, base_url=BASE_URL)
     return _client
+
+
+def get_sync_client() -> OpenAI:
+    global _sync_client
+    if _sync_client is None:
+        _sync_client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    return _sync_client
+
+
+def llm_query_sync(prompt: str, max_tokens: int = 2048) -> str:
+    """Synchronous sub-LLM call for use inside REPL (runs in asyncio.to_thread).
+    Uses SUB_MODEL (default: V4 Flash) — cheap and fast for context inspection."""
+    try:
+        client = get_sync_client()
+        resp = client.chat.completions.create(
+            model=SUB_MODEL,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt[:400_000]}],
+            temperature=0.0,
+        )
+        return resp.choices[0].message.content or ""
+    except Exception as e:
+        return f"[llm_query error: {e}]"
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10), reraise=True)
@@ -44,7 +67,7 @@ async def complete(
     temperature: float = 0.4,
     model_override: str | None = None,
 ) -> str:
-    """Free-form text completion. Used by executor ReAct loop."""
+    """Free-form text completion. Used by planner internals."""
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
@@ -54,7 +77,7 @@ async def complete(
         temperature=temperature,
     )
     result = response.choices[0].message.content or ""
-    logger.debug("LLM complete [%d tok]: %s", max_tokens, result[:200])
+    logger.debug("complete [%d tok]: %s", max_tokens, result[:200])
     return result.strip()
 
 
@@ -62,16 +85,11 @@ async def complete(
 async def complete_json(
     system: str,
     messages: list[dict],
-    max_tokens: int = 1024,
+    max_tokens: int = 2048,
     temperature: float = 0.2,
     model_override: str | None = None,
 ) -> dict:
-    """
-    JSON-mode completion. Used by planner and critic.
-    Lower temperature for deterministic structured output.
-    Falls back to regex extraction if model doesn't return valid JSON.
-    model_override: use a different model just for this call (e.g. PLANNER_MODEL=deepseek/deepseek-r1)
-    """
+    """JSON-mode completion. Used by planner and critic."""
     client = get_client()
     full_messages = [{"role": "system", "content": system}] + messages
     response = await client.chat.completions.create(
@@ -81,21 +99,15 @@ async def complete_json(
         temperature=temperature,
         response_format={"type": "json_object"},
     )
-    raw = (response.choices[0].message.content or "").strip()
-    logger.debug("LLM json [%d tok]: %s", max_tokens, raw[:300])
-
-    # Try direct parse first
+    raw = response.choices[0].message.content or ""
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
-
-    # Strip markdown fences and retry
     clean = re.sub(r"```json\s*|\s*```", "", raw).strip()
     try:
         return json.loads(clean)
     except json.JSONDecodeError:
-        # Extract first {...} block
         m = re.search(r"\{.*\}", clean, re.DOTALL)
         if m:
             return json.loads(m.group(0))
@@ -103,83 +115,99 @@ async def complete_json(
         return {}
 
 
-FILTER_SYSTEM = """You are a command output summariser for a terminal agent.
-You receive raw stdout/stderr from a bash command and return a concise structured summary.
+# ── Tool definitions for RLM executor loop ───────────────────────────────────
 
-Rules:
-- Keep all error messages VERBATIM (they are critical for debugging)
-- Keep all file paths, package names, version numbers verbatim
-- Keep the last 10 lines of output verbatim (most recent state matters)
-- Summarise repetitive lines (e.g. "Downloading... 1%... 2%...") into one line
-- Total output MUST be under 60 lines
-
-Format:
-SUMMARY: <one sentence of what happened>
-KEY_INFO: <important values: paths, versions, package names, ports>
-ERRORS: <any error messages verbatim, or "none">
-LAST_LINES:
-<last 10 lines of original output verbatim>"""
-
-
-async def summarize_output(
-    stdout: str,
-    stderr: str,
-    command: str,
-    exit_code: int,
-    char_threshold: int = 10000,
-) -> str:
-    """
-    If combined output exceeds char_threshold, use CONTEXT_FILTER_MODEL to summarise.
-    Returns filtered summary string, or original output if under threshold.
-    Falls back to simple truncation on any error — NEVER returns empty.
-
-    Threshold is 10000 chars (not 3000) — source code files, setup.py, .pyx files
-    are typically 3-8k and must be passed through verbatim for the LLM to reason about.
-    Only truly massive outputs (build logs, pip install, training logs) get filtered.
-    """
-    combined = stdout + stderr
-    if len(combined) <= char_threshold:
-        return combined  # Under threshold — pass through verbatim
-
-    logger.info("Context filter: output len=%d exceeds %d — summarising with %s",
-                len(combined), char_threshold, CONTEXT_FILTER_MODEL)
-    try:
-        import asyncio
-        client = get_client()
-        user_msg = (
-            f"Command: `{command}` (exit_code={exit_code})\n\n"
-            f"stdout (len={len(stdout)}):\n{stdout[:8000]}\n\n"
-            f"stderr (len={len(stderr)}):\n{stderr[:2000]}"
-        )
-        # 30-second timeout — filter must not burn task budget
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=CONTEXT_FILTER_MODEL,
-                messages=[
-                    {"role": "system", "content": FILTER_SYSTEM},
-                    {"role": "user", "content": user_msg},
-                ],
-                max_tokens=600,
-                temperature=0.0,
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "bash",
+            "description": (
+                "Run a bash command in the task environment. "
+                "Output appended to `context` list in the REPL. "
+                "Full output always in context[-1]['stdout']. "
+                "Use for any shell action."
             ),
-            timeout=30.0,
-        )
-        summary = (response.choices[0].message.content or "").strip()
-        logger.info("Context filter: reduced %d → %d chars", len(combined), len(summary))
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "The bash command to run."},
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Seconds; clamped to [1,300]. Default 30.",
+                        "minimum": 1, "maximum": 300,
+                    },
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "repl",
+            "description": (
+                "Execute Python in a persistent in-process REPL. "
+                "Globals: `context` (list of all bash/repl results), "
+                "`llm_query(prompt)` (fast sub-LLM for large output processing). "
+                "Use context[-1]['stdout'] to inspect full bash output. "
+                "NEVER run shell commands here — use bash instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Python code to execute."},
+                },
+                "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "final",
+            "description": "Terminate the task. Call ONLY when verified complete.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "output": {"type": "string", "description": "Brief summary of what was accomplished."},
+                },
+                "required": ["output"],
+            },
+        },
+    },
+]
 
-        # If filter returned empty or near-empty, fall back to truncation
-        if len(summary) < 50:
-            logger.warning("Context filter returned near-empty summary (%d chars) — using truncation", len(summary))
-            raise ValueError("empty summary")
 
-        return f"[FILTERED — original {len(combined)} chars]\n{summary}"
-
-    except Exception as e:
-        logger.warning("Context filter failed (%s) — using truncation fallback", e)
-        # Safe truncation: always preserve head + tail
-        head = combined[:4000]
-        tail = combined[-2000:]
-        omitted = len(combined) - 6000
-        if omitted > 0:
-            return f"{head}\n\n...[{omitted} chars omitted]...\n\n{tail}"
-        return combined
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=2, max=10), reraise=True)
+async def complete_with_tools(
+    system: str,
+    messages: list[dict],
+    max_tokens: int = 1024,
+    temperature: float = 0.2,
+    model_override: str | None = None,
+) -> dict:
+    """Tool-use completion for the REPL executor loop.
+    Returns {name, arguments, raw_message}."""
+    client = get_client()
+    full_messages = [{"role": "system", "content": system}] + messages
+    response = await client.chat.completions.create(
+        model=model_override or MODEL,
+        messages=full_messages,  # type: ignore[arg-type]
+        tools=TOOLS,  # type: ignore[arg-type]
+        tool_choice="required",
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    msg = response.choices[0].message
+    if msg.tool_calls:
+        tc = msg.tool_calls[0]
+        try:
+            args = json.loads(tc.function.arguments)
+        except (json.JSONDecodeError, ValueError):
+            args = {}
+        return {"name": tc.function.name, "arguments": args, "raw_message": msg}
+    # No tool call despite tool_choice=required — fallback
+    content = (msg.content or "").strip()
+    logger.warning("No tool call despite tool_choice=required — parsing content as bash")
+    return {"name": "bash", "arguments": {"command": content or "ls -la"}, "raw_message": msg}

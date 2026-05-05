@@ -242,9 +242,18 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
         return result
 
     # ── Best-of-N: generate N plans in parallel, pick best ───────────────────
+    # Each call has a 45s timeout — slow OpenRouter providers won't block the pipeline
     logger.info("Best-of-N planning: generating %d candidates (model=%s)", PLAN_BEST_OF_N, PLANNER_MODEL)
-    tasks = [_single_plan(user_content, task_text) for _ in range(PLAN_BEST_OF_N)]
-    candidates = await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _timed_plan(content: str, text: str) -> dict:
+        try:
+            return await asyncio.wait_for(_single_plan(content, text), timeout=45.0)
+        except asyncio.TimeoutError:
+            logger.warning("Planner candidate timed out after 45s — using fallback")
+            return _fallback_plan(text)
+
+    tasks_list = [_timed_plan(user_content, task_text) for _ in range(PLAN_BEST_OF_N)]
+    candidates = await asyncio.gather(*tasks_list, return_exceptions=True)
 
     valid = [c for c in candidates if isinstance(c, dict) and "subgoals" in c]
     if not valid:
@@ -330,12 +339,15 @@ Turn budget: {budget}
 Review the plan for the 6 issues listed. Return the improved plan JSON."""
 
     try:
-        refined = await complete_json(
-            system=CRITIQUE_SYSTEM,
-            messages=[{"role": "user", "content": critique_prompt}],
-            max_tokens=2048,
-            temperature=0.1,   # deterministic critique
-            model_override=PLANNER_MODEL,
+        refined = await asyncio.wait_for(
+            complete_json(
+                system=CRITIQUE_SYSTEM,
+                messages=[{"role": "user", "content": critique_prompt}],
+                max_tokens=2048,
+                temperature=0.1,
+                model_override=PLANNER_MODEL,
+            ),
+            timeout=30.0,
         )
         if refined and "subgoals" in refined and len(refined["subgoals"]) > 0:
             # Re-normalise fields in case critique added/removed subgoals
