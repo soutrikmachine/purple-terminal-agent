@@ -182,18 +182,30 @@ purple-terminal-agent/
 
 ---
 
-## Running Locally with fake_green.py
+## Running Locally
 
 ```bash
-# Terminal 1: start purple agent
+git clone https://github.com/soutrikmachine/purple-terminal-agent
+cd purple-terminal-agent
+
+# Install deps
+pip install openai httpx pydantic uvicorn tenacity fastapi
+
+# Build RAG task index (optional, needs internet)
+python scripts/build_task_index.py --output /tmp/task_index.json
+
+# Run agent
 OPENROUTER_API_KEY=sk-or-... \
 MODEL=deepseek/deepseek-v4-flash \
+TASK_INDEX_PATH=/tmp/task_index.json \
 python src/server.py --port 9009
 
-# Terminal 2: drive a task
-python scripts/fake_green.py \
-  --url http://127.0.0.1:9009 \
-  --instruction "Fix the git repository — squash the last 3 commits into one"
+# Health check
+curl http://localhost:9009/health
+curl http://localhost:9009/.well-known/agent-card.json
+
+# Unit tests (no network required)
+pytest tests/ -v
 ```
 
 ---
