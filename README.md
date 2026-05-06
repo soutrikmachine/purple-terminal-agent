@@ -23,7 +23,8 @@ Across 7 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. 
 | Sprint 3 baseline | **18/89** | Multi-turn A2A protocol | Protocol works |
 | +300s timeout | **24/89** | Extended command timeout | Build tasks unlocked |
 | +Permissive extraction | **25/89** | 4-method XML tag fallback | Reduced format failures |
-| +Domain scaffolds + temp 0.2 | **28/89** | 7 domain specialists, subgoal signalling | Best stable score |
+| +Domain scaffolds + temp 0.2 | **28/89** | 11 domain specialists, subgoal signalling | Best stable score |
+| + Domain specific critic + constitutional critique in planner | **25/89** | 7 domain critic, a critique plan after Best-of-N choose a winner to evaluate plan validity | Uniquely solved 2 new tasks
 
 **Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$1.80/run) has demonstrated capability across 42 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
 

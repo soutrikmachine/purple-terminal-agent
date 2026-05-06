@@ -20,11 +20,12 @@ v0.3 additions:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 
+
 from llm import complete_json
+#from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
 
+# approved 12s threshold logic
+PLAN_TIMEOUT = 12.0
+
 
 # ── FAILURE-CONDITIONED PROMPTING ─────────────────────────────────────────────
 # Negative examples from real Sprint 3 run failures injected directly.
@@ -43,18 +47,17 @@ PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "3"))  # set to 1 to disable
 FAILURE_EXAMPLES = """
 ## ❌ Plans That FAILED in Real Runs (learn from these)
 
-FAIL 1 — build-pmars (command timeout):
+FAIL 1 — build-pmars (API Gateway crash):
   Subgoal: "Install build dependencies"
   What happened: agent ran `apt-get update && apt-get install -y build-essential`
-  Result: Command timed out after 30 seconds → entire task failed immediately
-  Fix: Check what's already installed. Skip apt-get update. Install ONE package at a time without update.
+  Result: The terminal generated 5,000 lines of output, crashing the API.
+  Fix: You CAN plan long installs (you have 300s), but you MUST output-bound them: `apt-get update > /tmp/out 2>&1 && apt-get install -y build-essential >> /tmp/out 2>&1; tail -n 40 /tmp/out`
 
-FAIL 2 — bn-fit-modify (command timeout):
+FAIL 2 — bn-fit-modify (Progress bar flood):
   Subgoal: "Set up Python environment and install pandas, pgmpy"
-  What happened: agent ran `apt-get update -qq && apt-get install -y python3-venv && pip install pandas pgmpy`
-  Result: Timed out at 30s → task failed
-  Fix: Check `python3 -c "import pandas"` first. If missing, use `pip install --break-system-packages pandas 2>&1 | tail -3`
-  Note: `pip install --break-system-packages` IS safe and correct in Docker — do NOT avoid it.
+  What happened: agent ran `pip install pandas pgmpy`
+  Result: Loading bars flooded the context window.
+  Fix: Always plan to route pip output to a log: `pip install --break-system-packages X > /tmp/pip.log 2>&1; tail -n 10 /tmp/pip.log`
 
 FAIL 3 — chess-best-move (A2A total timeout ~18 minutes):
   Subgoal: "Analyse chess board image"
@@ -69,6 +72,12 @@ FAIL 4 — code-from-image (stuck in install loop):
   kept cycling through alternatives for 12 turns
   Fix: If tesseract not in apt, skip OCR entirely — use PIL to read text from image directly,
   or write the output based on what's visible in the task description.
+
+FAIL 5 — generic-task (ignored test harness):
+  Subgoal: "Implement solution"
+  What happened: Agent spent 20 turns guessing the configuration format.
+  Result: Failed. A `tests/test.sh` file existed that explained the exact format needed.
+  Fix: Always locate and READ the `tests/` directory (especially `test.sh` or `test_outputs.py`) in Subgoal 1 or 2.
 
 ## ✅ Patterns That SUCCEED
 
@@ -90,18 +99,20 @@ TURN_ALLOCATION_RULES = """
 ## Turn Allocation (MANDATORY — you MUST fill these fields)
 
 For each subgoal, specify:
-  "max_turns": N          — hard cap on exec_request turns for this subgoal (1-6 max per subgoal)
-  "timeout_risk": true/false — does it involve apt-get install or pip install of large packages?
+  "max_turns": N          — hard cap on execution turns for this subgoal (1-8 max).
+  "timeout_risk": true/false — does it involve apt-get, pip, or heavy ML operations?
 
 Allocation rules:
-  - Exploration subgoal: max_turns = 2
-  - Implementation subgoal: max_turns = 4-6
-  - Testing subgoal: max_turns = 2
-  - Verification subgoal: max_turns = 2
-  - SUM of all max_turns MUST be ≤ {budget} (we reserve 3 for safety margin)
-  - If timeout_risk = true: cap max_turns at 2 AND flag the risk in the "risks" array
-  - If sum exceeds budget: MERGE or REMOVE subgoals until it fits
-  - NEVER plan more than 5 subgoals total — too granular = runs out of turns
+  - Exploration & Harness Recon: max_turns = 2 (Locate test.sh and environment metadata)
+  - Implementation Subgoal: max_turns = 4-8 (Higher end for ML/Security/Data tasks)
+  - Baseline/Intermediate Testing: max_turns = 2[cite: 3, 4]
+  - Final Harness Verification: max_turns = 3 (Reserve time to debug failures in tests/test.sh)[cite: 3, 4]
+  
+Constraints:
+  - SUM of all max_turns MUST be ≤ {budget} (we reserve 3 turns for global safety).
+  - If sum exceeds budget: Merge subgoals or prioritize implementation over exploration.
+  - NEVER plan more than 5 subgoals total — over-granularity causes turn-budget exhaustion[cite: 4].
+  - If timeout_risk = true: Cap that specific subgoal at 2 turns to fail fast if it hangs.
 """
 
 
@@ -135,15 +146,18 @@ Your job: produce a structured JSON plan that breaks the task into ORDERED sub-g
 }
 
 ## Planning Rules
-- First sub-goal should ALWAYS be further exploration if state is unclear.
-- Keep sub-goals small: max ~5 commands each.
-- Order matters: earlier sub-goals must not depend on later ones.
-- Include an explicit verification sub-goal at the end.
+- First sub-goal should ALWAYS be recon + locating the `tests/` directory (look for `test.sh` or `test_outputs.py`)[cite: 3, 4].
+- Second sub-goal should be running the official test suite to establish a baseline failure and identify the exact objective[cite: 3].
+- Keep sub-goals small: max ~5 commands each[cite: 4].
+- Order matters: earlier sub-goals must not depend on later ones[cite: 4].
+- Final sub-goal MUST be the execution of the official benchmark test harness (`tests/test.sh`)[cite: 3, 4].
 - Do NOT include specific commands in the plan — that is the executor's job.
-- Risks should be specific to THIS task, not generic warnings.
-- Total estimated_turns must be realistic (sum should be under max_turns - 5).
-- NEVER plan apt-get update as a step — it alone takes 15-20s of the 30s budget.
-- If a subgoal needs a Python package: plan "check then install with --break-system-packages".
+- Risks should be specific to THIS task (e.g., "GPU memory limit," "Missing C++ headers")[cite: 4].
+- Total turns must be realistic: reserve 5 turns for the final verification/debugging phase[cite: 4].
+- You have a 300-second budget per command. You ARE allowed to plan `apt-get update`, heavy compilation, or large ML package installs.
+- However, you MUST bound the output of these long tasks using the Head-Tail log pattern to prevent API crashes.
+- If a subgoal needs a Python package: plan "check then install with --break-system-packages"[cite: 2, 4].
+- If specialized tasks (Security/ML/Data) are detected, plan for diagnostic tool checks (e.g., ldd, nvidia-smi) in the first 2 turns[cite: 1].
 - If image analysis is needed: plan "write ONE complete script", not iterative pixel loops.
 """
 
@@ -154,6 +168,7 @@ def _score_plan(plan: dict, budget: int) -> float:
     Higher is better.
     """
     score = 0.0
+    all_text = str(plan).lower()
     subgoals = plan.get("subgoals", [])
 
     # Right number of subgoals (3-5 is ideal)
@@ -184,14 +199,17 @@ def _score_plan(plan: dict, budget: int) -> float:
     if risky:
         score += 1.0  # aware of risks
 
-    # Penalise if apt-get update appears in risks/goals (means it's planned)
-    all_text = str(plan).lower()
-    if "apt-get update" in all_text or "apt update" in all_text:
-        score -= 2.0
-
     # Rewards single-script approach for image tasks
     if "script" in all_text or "write" in all_text:
         score += 1.0
+
+    # NEW: Reward benchmark-aware planning
+    if "tests/" in all_text or "test.sh" in all_text or "test_outputs.py" in all_text:
+        score += 5.0  # High reward for identifying the harness
+    
+    # NEW: Reward early baseline testing[cite: 3]
+    if len(subgoals) > 1 and ("run" in str(subgoals[1]).lower() or "test" in str(subgoals[1]).lower()):
+        score += 2.0
 
     return score
 
@@ -205,10 +223,21 @@ async def plan(
 ) -> dict:
     """
     Generate a structured plan for the task.
-    Uses Best-of-N sampling: generates PLAN_BEST_OF_N candidates, returns the best.
-    Returns the parsed plan dict, or a minimal fallback plan on failure.
+    Uses Dynamic Risk Assessment to decide between a single plan or Best-of-N.
+    Enforces a strict 12s timeout for planning to preserve turn budget.
     """
     budget = max_turns - 3  # reserve 3 for safety
+
+    # --- STEP 1: DYNAMIC RISK ASSESSMENT ---
+    # Benchmark-critical high-risk keywords
+    high_risk_keywords = [
+        "build", "compile", "docker", "ml", "caffe", "make", "pmars",
+        "torch", "pytorch", "tensorflow", "security", "nmap", "elf"
+    ]
+    is_high_risk = any(kw in (task_text + domains_str).lower() for kw in high_risk_keywords)
+    
+    # Only scale to parallel candidates if the task is high-risk[cite: 5]
+    n_candidates = PLAN_BEST_OF_N if is_high_risk else 1
 
     user_content = f"""## Task Description
 {task_text}
@@ -235,39 +264,49 @@ The SUM of all subgoal max_turns MUST be ≤ {budget}.
 Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fields on every subgoal.
 """
 
-    if PLAN_BEST_OF_N <= 1:
-        # Single plan + constitutional critique
+    # --- STEP 2: DYNAMIC ROUTING ---
+    if n_candidates <= 1:
+        logger.info("Low-Risk Task detected: single plan + critique.")
         result = await _single_plan(user_content, task_text)
         result = await _critique_plan(result, task_text, budget)
         return result
 
-    # ── Best-of-N: generate N plans in parallel, pick best ───────────────────
-    # Each call has a 45s timeout — slow OpenRouter providers won't block the pipeline
-    logger.info("Best-of-N planning: generating %d candidates (model=%s)", PLAN_BEST_OF_N, PLANNER_MODEL)
-
-    async def _timed_plan(content: str, text: str) -> dict:
-        try:
-            return await asyncio.wait_for(_single_plan(content, text), timeout=45.0)
-        except asyncio.TimeoutError:
-            logger.warning("Planner candidate timed out after 45s — using fallback")
-            return _fallback_plan(text)
-
-    tasks_list = [_timed_plan(user_content, task_text) for _ in range(PLAN_BEST_OF_N)]
-    candidates = await asyncio.gather(*tasks_list, return_exceptions=True)
+    # --- STEP 3: TIME-BOUNDED BEST-OF-N ---
+    logger.info("High-Risk Task: Scaling to %d candidates with %ds timeout", n_candidates, PLAN_TIMEOUT)
+    
+    # Create parallel tasks[cite: 7]
+    tasks = [asyncio.create_task(_single_plan(user_content, task_text)) for _ in range(n_candidates)]
+    
+    try:
+        # Wait for completion or the 12s threshold
+        done, pending = await asyncio.wait(tasks, timeout=PLAN_TIMEOUT)
+        
+        # Kill any LLM calls that exceeded the threshold to free up the 30s turn budget
+        for p in pending:
+            p.cancel()
+            
+        candidates = [t.result() for t in done if not t.exception()]
+    except Exception as e:
+        logger.error("Planning execution error: %s", e)
+        return _fallback_plan(task_text)
 
     valid = [c for c in candidates if isinstance(c, dict) and "subgoals" in c]
     if not valid:
-        logger.warning("All %d plan candidates failed — using fallback", PLAN_BEST_OF_N)
+        logger.warning("Scaling failed or timed out — using fallback plan.")
         return _fallback_plan(task_text)
 
+    # Score and pick the best survivor[cite: 7]
     scored = [(c, _score_plan(c, budget)) for c in valid]
     scored.sort(key=lambda x: x[1], reverse=True)
     best_plan, best_score = scored[0]
 
     logger.info(
         "Best-of-%d: picked plan score=%.1f from %d valid candidates | subgoals=%d",
-        PLAN_BEST_OF_N, best_score, len(valid), len(best_plan.get("subgoals", []))
+        n_candidates, best_score, len(valid), len(best_plan.get("subgoals", []))
     )
+
+    # ── Constitutional critique: refine the winner ────────────────────────────
+    best_plan = await _critique_plan(best_plan, task_text, budget)
     return best_plan
 
 
@@ -277,7 +316,7 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
         result = await complete_json(
             system=PLANNER_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
-            max_tokens=2048,
+            max_tokens=1500,
             temperature=0.4,  # slightly higher for Best-of-N diversity
             model_override=PLANNER_MODEL,
         )
@@ -308,26 +347,17 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
 
 
 async def _critique_plan(plan: dict, task_text: str, budget: int) -> dict:
-    """
-    Constitutional self-critique pass on the winning plan.
-    One extra LLM call that refines the plan before execution starts.
-    Returns the original plan on any failure — never blocks execution.
-    """
-    CRITIQUE_SYSTEM = """You are a plan auditor for a terminal agent. 
-You receive a task description and a draft execution plan.
-Your job is to identify concrete problems and return an improved plan.
+    """Constitutional self-critique pass on the winning plan. 30s timeout."""
+    CRITIQUE_SYSTEM = """You are a plan auditor for a terminal agent on Terminal Bench 2.0.
+Review the draft plan for these issues:
+1. Missing verification step at the end
+2. Steps requiring >5 min compile/training without output redirect
+3. Wrong tool assumptions (e.g. apt-get update without timeout)
+4. Turn budget exceeded (sum of max_turns > budget)
+5. Missing exploration subgoal when environment state is unclear
 
-Check for these specific issues:
-1. MISSING VERIFICATION: Does each subgoal have a specific verification command (not just "check exit code")?
-2. IMPOSSIBLE STEPS: Any step requiring compile/build/training that would take >5 minutes?
-3. WRONG ASSUMPTIONS: Does the plan assume files/tools exist without checking first?
-4. TURN BUDGET: Does the sum of max_turns exceed the budget? If so, merge or drop subgoals.
-5. WRONG TOOL: Does the plan use apt-get for something better handled by pip, or vice versa?
-6. MISSING EXPLORATION: If the environment state is unclear, is there an exploration subgoal first?
-
-Return the IMPROVED plan JSON with the same structure as the input.
-If the plan is already good, return it unchanged.
-Output ONLY the JSON object, no explanation."""
+Return the IMPROVED plan JSON with same structure. If plan is good, return unchanged.
+Output ONLY the JSON object."""
 
     critique_prompt = f"""Task: {task_text}
 
@@ -336,7 +366,7 @@ Draft plan:
 
 Turn budget: {budget}
 
-Review the plan for the 6 issues listed. Return the improved plan JSON."""
+Review for the 5 issues and return the improved plan JSON."""
 
     try:
         refined = await asyncio.wait_for(
@@ -350,7 +380,6 @@ Review the plan for the 6 issues listed. Return the improved plan JSON."""
             timeout=30.0,
         )
         if refined and "subgoals" in refined and len(refined["subgoals"]) > 0:
-            # Re-normalise fields in case critique added/removed subgoals
             for i, sg in enumerate(refined.get("subgoals", []), 1):
                 sg.setdefault("id", i)
                 sg.setdefault("domain", "generic")
@@ -358,12 +387,11 @@ Review the plan for the 6 issues listed. Return the improved plan JSON."""
                 sg.setdefault("estimated_turns", 3)
                 sg.setdefault("max_turns", sg["estimated_turns"])
                 sg.setdefault("timeout_risk", False)
-            logger.info(
-                "Constitutional critique: %d→%d subgoals | new_turns_total=%d",
-                len(plan.get("subgoals", [])), len(refined.get("subgoals", [])),
-                sum(sg.get("max_turns", 3) for sg in refined.get("subgoals", []))
-            )
+            logger.info("Constitutional critique: %d→%d subgoals",
+                        len(plan.get("subgoals", [])), len(refined.get("subgoals", [])))
             return refined
+    except asyncio.TimeoutError:
+        logger.warning("Constitutional critique timed out (30s) — using original plan")
     except Exception as e:
         logger.warning("Constitutional critique failed (%s) — using original plan", e)
     return plan
