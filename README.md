@@ -15,8 +15,9 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 ## Results and Updates
 
 ### Best Score: 30/89 (33.7%) — DeepSeek V4 Flash
+### Best Score: 31/89 (34.8%) - DeepSeek V4 Pro [Showing need of further architectural refinement]
 
-Across 8 evaluation runs, the agent has **uniquely solved 45 out of 89 tasks**. Each architectural generation delivered measurable understanding:
+Across 8 evaluation runs, the agent has **uniquely solved 45 out of 89 tasks**. With a single evaluation run with DeepSeek-V4-Pro, the agent has uniquely solved **2 more tasks**, bringing total uniquely solved task to **47 out of 89 (52.8%)**. Each architectural generation delivered measurable understanding:
 
 | Run | Score | Architecture | Key insight |
 |-----|-------|-------------|-------------|
@@ -27,9 +28,9 @@ Across 8 evaluation runs, the agent has **uniquely solved 45 out of 89 tasks**. 
 | + Domain specific critic + constitutional critique in planner | **25/89** | 7 domain critic, a critique plan after Best-of-N choose a winner to evaluate plan validity | Uniquely solved 2 new tasks |
 | -constitutional critique + subgoal planner | **30/89** | Dropping constitutional critique to reduce timeout errors, 45s subgoal planner buffer | 3 uniquely solved tasks |
 
-**Uniquely Solved Tasks:** The following tasks have been solved at least 1 time: `log-summary-date-ranges`, `modernize-scientific-stack`, `multi-source-data-merger`, `prove-plus-comm`, `pytorch-model-recovery`, `regex-log`, `fix-git`, `git-leak-recovery`, `hf-model-inference`, `openssl-selfsigned-cert`, `vulnerable-secret`, `build-pmars`, `cobol-modernization`, `configure-git-webserver`, `distribution-search`, `fix-code-vulnerability`, `nginx-request-logging`, `pypi-server`, `cancel-async-tasks`, `code-from-image`, `constraints-scheduling`, `git-multibranch`, `headless-terminal`, `password-recovery`, `portfolio-optimization`, `qemu-startup`, `sqlite-db-truncate`, `sqlite-with-gcov`, `tune-mjcf`, `kv-store-grpc`, `mcmc-sampling-stan`, `pytorch-model-cli`, `bn-fit-modify`, `count-dataset-tokens`, `crack-7z-hash`, `extract-elf`, `feal-differential-cryptanalysis`, `large-scale-text-editing`, `polyglot-c-py`, `sparql-university`, `build-pov-ray`, `reshard-c4-data`, `break-filter-js-from-html`, `custom-memory-heap-crash`, `merge-diff-arc-agi-task`. [**Total 45 out of 89 (50.6%)**]
+**Total Solved Tasks:** The following tasks have been solved at least 1 time: `log-summary-date-ranges`, `modernize-scientific-stack`, `multi-source-data-merger`, `prove-plus-comm`, `pytorch-model-recovery`, `regex-log`, `fix-git`, `git-leak-recovery`, `hf-model-inference`, `openssl-selfsigned-cert`, `vulnerable-secret`, `build-pmars`, `cobol-modernization`, `configure-git-webserver`, `distribution-search`, `fix-code-vulnerability`, `nginx-request-logging`, `pypi-server`, `cancel-async-tasks`, `code-from-image`, `constraints-scheduling`, `git-multibranch`, `headless-terminal`, `password-recovery`, `portfolio-optimization`, `qemu-startup`, `sqlite-db-truncate`, `sqlite-with-gcov`, `tune-mjcf`, `kv-store-grpc`, `mcmc-sampling-stan`, `pytorch-model-cli`, `bn-fit-modify`, `count-dataset-tokens`, `crack-7z-hash`, `extract-elf`, `feal-differential-cryptanalysis`, `large-scale-text-editing`, `polyglot-c-py`, `sparql-university`, `build-pov-ray`, `reshard-c4-data`, `break-filter-js-from-html`, `custom-memory-heap-crash`, `merge-diff-arc-agi-task`, `mailman`, `build-cython-ext`. [**Total 47 out of 89 (52.8%)**]
 
-**Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$2.50/run) has demonstrated capability across 45 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
+**Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$2.50/run) has demonstrated capability across 45 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling. Though with DeepSeek-V4-Pro we got the best single run result but the run costs ~$14.6, which is ~6 times that of V4-Flash run. However the improvement is marginal despite getting **2 more uniquely solved tasks**. This shows our inference depth scaling architecture needs further improvement to bring consistency across all runs.
 
 ---
 
