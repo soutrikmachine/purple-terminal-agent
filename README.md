@@ -5,7 +5,7 @@
 [![Terminal Bench 2.0](https://img.shields.io/badge/Benchmark-Terminal%20Bench%202.0-blue)](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
 [![Docker](https://img.shields.io/badge/Docker-rimodock%2Fpurple--terminal--agent-blue)](https://hub.docker.com/r/rimodock/purple-terminal-agent)
 
-A **Hierarchical Planner + Critic Pre-flight + Constitutional Critique in Planner + Domain Specfic Critics + RAG** terminal agent for the
+A **Hierarchical Planner + Critic Pre-flight + Constitutional Critique in Planner + Domain Specific Critics + RAG** terminal agent for the
 [AgentX–AgentBeats](https://rdi.berkeley.edu/agentx-agentbeats) Sprint 3 competition,
 evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
 — 89 hard, realistic command-line tasks.
