@@ -5,7 +5,7 @@
 [![Terminal Bench 2.0](https://img.shields.io/badge/Benchmark-Terminal%20Bench%202.0-blue)](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
 [![Docker](https://img.shields.io/badge/Docker-rimodock%2Fpurple--terminal--agent-blue)](https://hub.docker.com/r/rimodock/purple-terminal-agent)
 
-A **Hierarchical Planner + Critic Pre-flight + RAG** terminal agent for the
+A **Hierarchical Planner + Critic Pre-flight + Constitutional Critique in Planner + Domain Specfic Critics + RAG** terminal agent for the
 [AgentX–AgentBeats](https://rdi.berkeley.edu/agentx-agentbeats) Sprint 3 competition,
 evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/terminal-bench-2-0)
 — 89 hard, realistic command-line tasks.
@@ -14,9 +14,9 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 
 ## Results and Updates
 
-### Best Score: 28/89 (31.5%) — DeepSeek V4 Flash
+### Best Score: 30/89 (33.7%) — DeepSeek V4 Flash
 
-Across 7 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. Each architectural generation delivered measurable understanding:
+Across 8 evaluation runs, the agent has **uniquely solved 45 out of 89 tasks**. Each architectural generation delivered measurable understanding:
 
 | Run | Score | Architecture | Key insight |
 |-----|-------|-------------|-------------|
@@ -24,9 +24,12 @@ Across 7 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. 
 | +300s timeout | **24/89** | Extended command timeout | Build tasks unlocked |
 | +Permissive extraction | **25/89** | 4-method XML tag fallback | Reduced format failures |
 | +Domain scaffolds + temp 0.2 | **28/89** | 11 domain specialists, subgoal signalling | Best stable score |
-| + Domain specific critic + constitutional critique in planner | **25/89** | 7 domain critic, a critique plan after Best-of-N choose a winner to evaluate plan validity | Uniquely solved 2 new tasks
+| + Domain specific critic + constitutional critique in planner | **25/89** | 7 domain critic, a critique plan after Best-of-N choose a winner to evaluate plan validity | Uniquely solved 2 new tasks |
+| -constitutional critique + subgoal planner | **30/89** | Dropping constitutional critique to reduce timeout errors, 45s subgoal planner buffer | 3 uniquely solved tasks |
 
-**Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$1.80/run) has demonstrated capability across 42 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
+**Uniquely Solved Tasks:** The following tasks have been solved at least 1 time: log-summary-date-ranges, modernize-scientific-stack, multi-source-data-merger, prove-plus-comm, pytorch-model-recovery, regex-log, fix-git, git-leak-recovery, hf-model-inference, openssl-selfsigned-cert, vulnerable-secret, build-pmars, cobol-modernization, configure-git-webserver, distribution-search, fix-code-vulnerability, nginx-request-logging, pypi-server, cancel-async-tasks, code-from-image, constraints-scheduling, git-multibranch, headless-terminal, password-recovery, portfolio-optimization, qemu-startup, sqlite-db-truncate, sqlite-with-gcov, tune-mjcf, kv-store-grpc, mcmc-sampling-stan, pytorch-model-cli, bn-fit-modify, count-dataset-tokens, crack-7z-hash, extract-elf, feal-differential-cryptanalysis, large-scale-text-editing, polyglot-c-py, sparql-university, build-pov-ray, reshard-c4-data, break-filter-js-from-html, custom-memory-heap-crash,merge-diff-arc-agi-task. [**Total 45 out of 89 (50.6%)**]
+
+**Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$2.50/run) has demonstrated capability across 42 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
 
 ---
 
