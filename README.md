@@ -11,6 +11,7 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 — 89 hard, realistic command-line tasks.
 
 ---
+### Test with REPL + SUB-LLM in Progress....
 
 ## Results and Updates
 
@@ -187,7 +188,7 @@ purple-terminal-agent/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | required | OpenRouter API key |
-| `MODEL` | `deepseek/deepseek-v4-pro` | Model via OpenRouter |
+| `MODEL` | `google/gemini-3-flash-preview` | Model via OpenRouter |
 | `PLANNER_MODEL` | Optional | via OpenRouter |
 | `MAX_TURNS` | `30` | Max ReAct turns per task |
 | `PORT` | `9009` | A2A server port |

@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 # ── Model routing ─────────────────────────────────────────────────────────────
 # Set PLANNER_MODEL=deepseek/deepseek-r1 to use R1 for planning only.
-# Falls back to the global MODEL env var (deepseek/deepseek-v4-pro) if not set.
-PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "deepseek/deepseek-v4-pro"))
+# Falls back to the global MODEL env var (google/gemini-3-flash-preview) if not set.
+PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "google/gemini-3-flash-preview"))
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "1"))  # set to 1 to disable
@@ -320,8 +320,8 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
         result = await complete_json(
             system=PLANNER_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
-            max_tokens=1500,
-            temperature=0.4,  # slightly higher for Best-of-N diversity
+            max_tokens=4096,
+            temperature=0.25,  # slightly higher for Best-of-N diversity
             model_override=PLANNER_MODEL,
         )
     except Exception as e:
