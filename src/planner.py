@@ -266,17 +266,26 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
 
     # --- STEP 2: DYNAMIC ROUTING ---
     if n_candidates <= 1:
-        logger.info("Low-Risk Task: single plan, no critique.")
+        # Low-Risk: Bypass parallel generation to save turn time
+        logger.info("Low-Risk Task detected: Bypassing Best-of-N to save time.")
         return await _single_plan(user_content, task_text)
 
     # --- STEP 3: TIME-BOUNDED BEST-OF-N ---
     logger.info("High-Risk Task: Scaling to %d candidates with %ds timeout", n_candidates, PLAN_TIMEOUT)
     
     # Create parallel tasks[cite: 7]
-    tasks = [asyncio.create_task(_single_plan(user_content, task_text)) for _ in range(n_candidates)]
-    
+    # 45s per-candidate timeout — prevents slow OpenRouter providers blocking pipeline
+    async def _timed_plan(c: str, t: str) -> dict:
+        try:
+            return await asyncio.wait_for(_single_plan(c, t), timeout=45.0)
+        except asyncio.TimeoutError:
+            logger.warning("Planner candidate timed out after 45s — using fallback")
+            return _fallback_plan(t)
+
+    tasks = [asyncio.create_task(_timed_plan(user_content, task_text)) for _ in range(n_candidates)]
+
     try:
-        # Wait for completion or the 12s threshold
+        # Wait for completion or the PLAN_TIMEOUT threshold
         done, pending = await asyncio.wait(tasks, timeout=PLAN_TIMEOUT)
         
         # Kill any LLM calls that exceeded the threshold to free up the 30s turn budget
@@ -302,9 +311,6 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
         "Best-of-%d: picked plan score=%.1f from %d valid candidates | subgoals=%d",
         n_candidates, best_score, len(valid), len(best_plan.get("subgoals", []))
     )
-
-    # ── Constitutional critique: refine the winner ────────────────────────────
-    best_plan = await _critique_plan(best_plan, task_text, budget)
     return best_plan
 
 
@@ -342,57 +348,6 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
         result.get("risks", []),
     )
     return result
-
-
-async def _critique_plan(plan: dict, task_text: str, budget: int) -> dict:
-    """Constitutional self-critique pass on the winning plan. 30s timeout."""
-    CRITIQUE_SYSTEM = """You are a plan auditor for a terminal agent on Terminal Bench 2.0.
-Review the draft plan for these issues:
-1. Missing verification step at the end
-2. Steps requiring >5 min compile/training without output redirect
-3. Wrong tool assumptions (e.g. apt-get update without timeout)
-4. Turn budget exceeded (sum of max_turns > budget)
-5. Missing exploration subgoal when environment state is unclear
-
-Return the IMPROVED plan JSON with same structure. If plan is good, return unchanged.
-Output ONLY the JSON object."""
-
-    critique_prompt = f"""Task: {task_text}
-
-Draft plan:
-{json.dumps(plan, indent=2)}
-
-Turn budget: {budget}
-
-Review for the 5 issues and return the improved plan JSON."""
-
-    try:
-        refined = await asyncio.wait_for(
-            complete_json(
-                system=CRITIQUE_SYSTEM,
-                messages=[{"role": "user", "content": critique_prompt}],
-                max_tokens=2048,
-                temperature=0.1,
-                model_override=PLANNER_MODEL,
-            ),
-            timeout=30.0,
-        )
-        if refined and "subgoals" in refined and len(refined["subgoals"]) > 0:
-            for i, sg in enumerate(refined.get("subgoals", []), 1):
-                sg.setdefault("id", i)
-                sg.setdefault("domain", "generic")
-                sg.setdefault("verification", "check output and exit code")
-                sg.setdefault("estimated_turns", 3)
-                sg.setdefault("max_turns", sg["estimated_turns"])
-                sg.setdefault("timeout_risk", False)
-            logger.info("Constitutional critique: %d→%d subgoals",
-                        len(plan.get("subgoals", [])), len(refined.get("subgoals", [])))
-            return refined
-    except asyncio.TimeoutError:
-        logger.warning("Constitutional critique timed out (30s) — using original plan")
-    except Exception as e:
-        logger.warning("Constitutional critique failed (%s) — using original plan", e)
-    return plan
 
 
 def _fallback_plan(task_text: str) -> dict:
