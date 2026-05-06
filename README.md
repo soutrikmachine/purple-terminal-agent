@@ -186,7 +186,7 @@ purple-terminal-agent/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | required | OpenRouter API key |
-| `MODEL` | `deepseek/deepseek-v4-flash` | Model via OpenRouter |
+| `MODEL` | `deepseek/deepseek-v4-pro` | Model via OpenRouter |
 | `PLANNER_MODEL` | Optional | via OpenRouter |
 | `MAX_TURNS` | `30` | Max ReAct turns per task |
 | `PORT` | `9009` | A2A server port |

@@ -14,7 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
-MODEL    = os.environ.get("MODEL", "deepseek/deepseek-v4-flash")
+MODEL    = os.environ.get("MODEL", "deepseek/deepseek-v4-pro")
 API_KEY  = os.environ.get("OPENROUTER_API_KEY", "")
 BASE_URL = "https://openrouter.ai/api/v1"
 PLANNER_MODEL = os.environ.get("PLANNER_MODEL", MODEL)
