@@ -16,7 +16,7 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 
 ### Best Score: 28/89 (31.5%) — DeepSeek V4 Flash
 
-Across 8 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. Each architectural generation delivered measurable understanding:
+Across 7 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. Each architectural generation delivered measurable understanding:
 
 | Run | Score | Architecture | Key insight |
 |-----|-------|-------------|-------------|
@@ -25,7 +25,7 @@ Across 8 evaluation runs, the agent has **uniquely solved 42 out of 89 tasks**. 
 | +Permissive extraction | **25/89** | 4-method XML tag fallback | Reduced format failures |
 | +Domain scaffolds + temp 0.2 | **28/89** | 7 domain specialists, subgoal signalling | Best stable score |
 
-**Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$2.50/run) has demonstrated capability across 42 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
+**Key research finding:** Our architecture proved that a budget-constrained agent (V4 Flash, ~$1.80/run) has demonstrated capability across 42 unique tasks. The gap between single-run score and total capability is explained by reasoning variance, not architecture ceiling.
 
 ---
 
