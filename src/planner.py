@@ -266,10 +266,8 @@ Produce the JSON plan now. Remember: max_turns and timeout_risk are REQUIRED fie
 
     # --- STEP 2: DYNAMIC ROUTING ---
     if n_candidates <= 1:
-        logger.info("Low-Risk Task detected: single plan + critique.")
-        result = await _single_plan(user_content, task_text)
-        result = await _critique_plan(result, task_text, budget)
-        return result
+        logger.info("Low-Risk Task: single plan, no critique.")
+        return await _single_plan(user_content, task_text)
 
     # --- STEP 3: TIME-BOUNDED BEST-OF-N ---
     logger.info("High-Risk Task: Scaling to %d candidates with %ds timeout", n_candidates, PLAN_TIMEOUT)
