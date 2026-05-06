@@ -124,19 +124,18 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "bash",
-            "description": (
-                "Run a bash command in the task environment. "
-                "Output appended to `context` list in the REPL. "
-                "Full output always in context[-1]['stdout']. "
-                "Use for any shell action."
-            ),
+            "description": "Run a shell command. Use upto 300s for any build/install/train.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "The bash command to run."},
-                    "timeout": {"type": "integer", "description": "Command timeout in seconds (60-300).", "default": 60}
+                    "thought": {
+                        "type": "string",
+                        "description": "Step-by-step reasoning on WHY you are running this command and what file state it will change."
+                    },
+                    "command": {"type": "string"},
+                    "timeout": {"type": "integer", "default": 300}
                 },
-                "required": ["command"],
+                "required": ["thought", "command"],
             },
         },
     },
@@ -144,19 +143,17 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "repl",
-            "description": (
-                "Execute Python in a persistent in-process REPL. "
-                "Globals: `context` (list of all bash/repl results), "
-                "`llm_query(prompt)` (fast sub-LLM for large output processing). "
-                "You MUST use print() to output variables so you can see them. "
-                "NEVER run shell commands here — use bash instead."
-            ),
+            "description": "Execute Python in a persistent REPL.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "code": {"type": "string", "description": "Python code to execute. Use print() to see output."},
+                    "thought": {
+                        "type": "string",
+                        "description": "Explain what you are trying to extract or analyze from the context."
+                    },
+                    "code": {"type": "string"}
                 },
-                "required": ["code"],
+                "required": ["thought", "code"],
             },
         },
     },
@@ -164,13 +161,17 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "final",
-            "description": "Terminate the task. Call ONLY when verified complete.",
+            "description": "Terminate the task.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "output": {"type": "string", "description": "Brief summary of what was accomplished."},
+                    "thought": {
+                        "type": "string",
+                        "description": "CRITICAL: Explain exactly how you verified the changes on the filesystem BEFORE calling final."
+                    },
+                    "output": {"type": "string"}
                 },
-                "required": ["output"],
+                "required": ["thought", "output"],
             },
         },
     },

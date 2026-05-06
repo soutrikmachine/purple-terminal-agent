@@ -64,25 +64,31 @@ RECON_CMD = (
 
 REPL_SYSTEM_SUFFIX = """
 ## Tools
-You have exactly three tools: bash, repl, final.
+You have three tools: bash, repl, final.
 
-**bash(command, timeout=60)**: Run a shell command. 
-  - Full output is always stored in `context[-1]['stdout']`.
-  - Use this for filesystem changes, installs, and builds. Set timeout to 300 for long tasks.
+**bash(command, timeout=300)**:
+  - DEFAULT TIMEOUT IS 300s. You MUST use 300 for: `apt-get`, `pip install`, `make`, `cmake`, and any `python` training/inference scripts.
+  - Chat previews are strictly limited to 4KB. Full output is saved in `context[-1]['stdout']`.
 
-**repl(code)**: Execute Python in a persistent sandbox. 
-  - Globals: `context` (your transcript list), `llm_query(prompt)`.
-  - YOU MUST USE `print()` TO SEE OUTPUT. (e.g., `print(context[-1]['stdout'][:2000])`).
-  - `llm_query(prompt)` calls a powerful sub-LLM to analyze massive text. 
-  - Example: `result = llm_query(f"Find the failure reason in this log: {context[-1]['stdout']}"); print(result)`
-  - NEVER run shell commands here.
+**repl(code)**:
+  - GLOBALS: `context` (list of results), `llm_query(prompt)` (DeepSeek-V4-Flash analyst).
+  - MANDATORY USE: If a bash command results in "[TRUNCATED]", you are FORBIDDEN from running more bash commands to see the file. You MUST call `repl` to inspect the `context` or use `llm_query`.
+  - ROLE: Use `llm_query` for: 
+    1. Summarizing logs > 50 lines.
+    2. Finding specific errors in massive compiler outputs.
+    3. Writing complex Python scripts based on `context` data.
+  - print() is REQUIRED to see local execution results.
 
-**final(output)**: End the task. Call ONLY after manually running tests and verifying success.
+**final(output)**:
+  - Only call after you have verified the task using the official test harness (usually `tests/test.sh` or similar).
 
-## Discipline
-- One tool call per response.
-- Do NOT hallucinate output. If a bash command truncates, use the `repl` tool to read the rest.
-- Never write infinite loops in the REPL.
+## Operational Discipline
+1. **NO PHANTOM WRITES**: Finding the answer in the `repl` is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat > file.py`). The evaluator checks the filesystem, not your memory.
+2. **MANDATORY VERIFICATION**: Before calling `final`, you must literally run the test script (e.g., `bash tests/test.sh`) to prove your solution works. If you call final without running the test, you will fail.
+3. **THINK FIRST**: You must populate the `thought` field in your JSON before writing the code/command.
+4. **TRUNCATION RULE**: If you see the marker "...[chars; full in context[-1]]...", 
+   do NOT attempt to guess the missing content. Call `repl` immediately. 
+   Use `print(context[-1]['stdout'])` to see the full data.
 """
 
 
@@ -381,7 +387,7 @@ class AgentSession:
                 self.last_action_was_repl = True
                 return json.dumps({"kind": "exec_request", "command": "echo '[A2A_EMPTY_YIELD]'", "timeout": 10})
 
-            tmo = int(args.get("timeout", 60))
+            tmo = int(args.get("timeout", 300))
             tmo = max(10, min(tmo, 300))  # Ensure valid bounds
 
             current_sg = (self.subgoals[min(self.current_sg_idx, len(self.subgoals)-1)]

@@ -159,6 +159,14 @@ Your job: produce a structured JSON plan that breaks the task into ORDERED sub-g
 - If a subgoal needs a Python package: plan "check then install with --break-system-packages"[cite: 2, 4].
 - If specialized tasks (Security/ML/Data) are detected, plan for diagnostic tool checks (e.g., ldd, nvidia-smi) in the first 2 turns[cite: 1].
 - If image analysis is needed: plan "write ONE complete script", not iterative pixel loops.
+
+## Rule for Smaller Executors
+Every subgoal you create must be MECHANICAL. 
+Instead of "Fix the bug," plan: 
+1. "Read the error log" 
+2. "Identify the line number" 
+3. "Apply a sed fix" 
+4. "Re-run the test."
 """
 
 
