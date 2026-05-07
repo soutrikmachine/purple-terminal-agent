@@ -155,24 +155,26 @@ _DOMAIN_CRITIC_SYSTEMS: dict[str, str] = {
 
 ## ALWAYS APPROVE:
 - `pip install --break-system-packages` for torch, tensorflow, transformers, datasets, mteb — correct in Docker
-- `torch.load(..., map_location='cpu')` — correct when no GPU available (most containers)
+- `torch.load(..., map_location='cpu')` — correct when no GPU available
 - HuggingFace model loading: AutoModel.from_pretrained, pipeline(), AutoTokenizer
 - Training scripts redirected to log files
-- model.load_state_dict(state, strict=False) — correct for partial checkpoint loading
 - nvidia-smi — safe diagnostic
 - Any inference script using model.eval() and torch.no_grad()
 
 ## REVISE only for:
 - pip/apt install NOT redirected: must use `> /tmp/pip.log 2>&1; tail -5 /tmp/pip.log`
-- Downloading a HuggingFace model that already exists in ~/.cache/huggingface/ (check first)
-- Training command run in foreground without output redirect for long jobs
+- Downloading a HuggingFace model that already exists in ~/.cache/huggingface/
+- Training command run in foreground without output redirect: 
   → REVISE to: `python3 train.py > /tmp/train.log 2>&1; tail -20 /tmp/train.log`
+- [CRITICAL TIME-TRAP] `pip install fasttext` (without -wheel):
+  → REVISE to: `pip install --break-system-packages fasttext-wheel > /tmp/pip.log 2>&1; tail -5 /tmp/pip.log`
+- [CRITICAL TIME-TRAP] `make all` or `make` inside a Caffe directory:
+  → REVISE to: `echo 'ERROR: Building Caffe from source exceeds 300s. Use apt-get install -y caffe-cpu instead.'`
 
 ## Terminal Bench specific tasks:
-- pytorch-model-recovery: load_state_dict with strict=False is CORRECT, not a bug
+- pytorch-model-recovery: load_state_dict with strict=False is CORRECT
 - hf-model-inference: use device=-1 for CPU inference, map_location='cpu' for torch.load
-- torch-pipeline-parallelism, torch-tensor-parallelism: device_map or manual CPU sharding is correct
-- count-dataset-tokens: datasets + AutoTokenizer pipeline is correct approach
+- count-dataset-tokens: datasets + AutoTokenizer pipeline is correct
 - sam-cell-seg: segment-anything library, download SAM checkpoint if not present
 
 ## Output: {"verdict": "APPROVE"/"REVISE", "issue": "...", "revised_command": "..."}""",

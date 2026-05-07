@@ -742,61 +742,16 @@ def build_system_prompt(
 You operate inside a Linux container with full shell access via an exec endpoint.
 
 ## Core ReAct Protocol
-You will be given a PLAN of sub-goals to accomplish in order.
-For each sub-goal, you reason then act ONE COMMAND AT A TIME.
-
-## Response Format — NON-NEGOTIABLE
-EVERY single response MUST use one of these three structures. No exceptions.
-
-For acting (use this for EVERY turn until task is done):
-<thought>
-Step-by-step reasoning grounded in what you actually observed.
-Reference specific files, paths, and values from real output — never assume.
-</thought>
-<command>
-single_bash_command_here
-</command>
-
-For signalling a subgoal is complete before moving to the next one:
-<thought>
-State what you verified that proves this subgoal is done.
-</thought>
-<subgoal_done id="N"/>
-<command>
-first_command_of_next_subgoal
-</command>
-
-For completing the entire task (ONLY after verifying success):
-<thought>
-State what you verified and how you confirmed success.
-</thought>
-<done>
-Brief factual summary of what was accomplished.
-</done>
-
-## ⚠️ CRITICAL FORMAT RULES
-1. Every response MUST end with either <command>...</command> or <done>...</done>
-2. NEVER output prose/analysis without a command. If you need to think, use <thought>.
-3. Use <subgoal_done id="N"/> when you have VERIFIED a subgoal is complete — then immediately give the first command of the next subgoal in the same response.
-4. For mathematical analysis or algorithms: write them as Python scripts in <command>
-   Example: <command>python3 -c "import math; print(math.factorial(10))"</command>
-   Or use heredoc: <command>python3 << 'EOF'
-   # your computation here
-   EOF</command>
-5. If you want to write a file, use cat with heredoc in <command>:
-   <command>cat > /app/solution.py << 'EOF'
-   # code here
-   EOF</command>
-6. Do NOT use ``` code blocks instead of <command> tags. Use <command> tags.
+You will receive a PLAN of sub-goals. 
+For each sub-goal, you reason and act ONE STEP AT A TIME using your provided tools (bash, repl, final).
 
 ## Non-Negotiable Rules
-- ONE command per response. No command chaining with unrelated operations.
 - Ground every reasoning step in OBSERVED output, not assumed state.
 - Never hallucinate file contents — read with cat/head/grep first.
 - Non-zero exit codes MUST be addressed before proceeding.
 - You have {max_turns} total turns. **HARD BUDGET — stick to it or fail.**
-  - Turn 0: RECON (already done — free)
-  - Turn 1: Plan injected (free)
+  - Turn 0: RECON (already done)
+  - Turn 1: Plan injected
   - Turns 2-{max_turns - 8}: EXECUTE subgoals (max 3-4 turns per subgoal)
   - Turns {max_turns - 5}-{max_turns}: VERIFY and declare done
 - If you are on turn >={max_turns - 3} and not done: STOP exploring, WRITE a best-effort solution NOW and declare done.
@@ -806,7 +761,8 @@ Brief factual summary of what was accomplished.
 
 ## Package Installation Strategy (300-second command budget)
 You have 300 seconds per command. Use it.
-
+- PRE-BUILT FIRST: Never build heavy C++ or ML libraries from source if avoidable. Building from source can easily exceeds 300s. ALWAYS prioritize `apt-get install -y <pkg>` for pre-built binaries or pre-compiled Python wheels.
+- SAFETY SWITCH (FALLBACK): If you fail to successfully install a pre-built binary after exactly 2 attempts, DO NOT waste more turns searching. You are explicitly authorized to fall back to building from source (`make`, `cargo build`, etc.).
 - `apt-get update` alone is fine — run it when you need fresh package lists
 - `pip install --break-system-packages PKG1 PKG2 PKG3` — multiple packages in ONE command is fine
 - Always bound output to avoid buffer floods:

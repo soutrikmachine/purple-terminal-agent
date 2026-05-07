@@ -65,30 +65,35 @@ RECON_CMD = (
 REPL_SYSTEM_SUFFIX = """
 ## Tools
 You have three tools: bash, repl, final.
+CRITICAL: Each step you must call exactly ONE of the three tools. Do not attempt to use multiple tools in a single response, and do not respond with plain text without calling a tool.
 
 **bash(command, timeout=300)**:
-  - DEFAULT TIMEOUT IS 300s. You MUST use 300 for: `apt-get`, `pip install`, `make`, `cmake`, and any `python` training/inference scripts.
-  - Chat previews are strictly limited to 4KB. Full output is saved in `context[-1]['stdout']`.
+  - DEFAULT TIMEOUT IS 300s. You MUST use 300 for: `apt-get`, `pip install`, `make`, `cmake`, and any training scripts.
+  - Chat previews are strictly limited to 6KB. Full output is saved in `context[-1]['stdout']`.
 
 **repl(code)**:
-  - GLOBALS: `context` (list of results), `llm_query(prompt)` (DeepSeek-V4-Flash analyst).
-  - MANDATORY USE: If a bash command results in "[TRUNCATED]", you are FORBIDDEN from running more bash commands to see the file. You MUST call `repl` to inspect the `context` or use `llm_query`.
-  - ROLE: Use `llm_query` for: 
-    1. Summarizing logs > 50 lines.
-    2. Finding specific errors in massive compiler outputs.
-    3. Writing complex Python scripts based on `context` data.
+  - GLOBALS: `context` (list of results), `llm_query(prompt)` (DeepSeek Analyst).
+  - USE CASE: Use `repl` for context inspection, slicing, and calling `llm_query`. NEVER run shell commands here.
   - print() is REQUIRED to see local execution results.
 
 **final(output)**:
-  - Only call after you have verified the task using the official test harness (usually `tests/test.sh` or similar).
+  - Only call after you have verified the task using the official test harness.
+
+## Sub-Model Analyst Pipeline (CRITICAL)
+You have `llm_query(prompt)` inside the REPL. It calls a powerful DeepSeek analyst model. 
+When an output is too large and you see "...[chars; full in context[-1]]...", you MUST use this specific pattern to avoid context blindness:
+1. Call the `repl` tool.
+2. Slice a specific chunk of the massive log out of `context` (keep chunks under 30,000 chars to ensure fast response times).
+3. Pass it to the analyst with a precise question:
+   ```python
+   chunk = context[-1]['stdout'][-20000:] 
+   ans = llm_query(f"Find the exact fatal error in this log chunk: {chunk}")
+   print(ans)
 
 ## Operational Discipline
 1. **NO PHANTOM WRITES**: Finding the answer in the `repl` is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat > file.py`). The evaluator checks the filesystem, not your memory.
 2. **MANDATORY VERIFICATION**: Before calling `final`, you must literally run the test script (e.g., `bash tests/test.sh`) to prove your solution works. If you call final without running the test, you will fail.
 3. **THINK FIRST**: You must populate the `thought` field in your JSON before writing the code/command.
-4. **TRUNCATION RULE**: If you see the marker "...[chars; full in context[-1]]...", 
-   do NOT attempt to guess the missing content. Call `repl` immediately. 
-   Use `print(context[-1]['stdout'])` to see the full data.
 """
 
 
