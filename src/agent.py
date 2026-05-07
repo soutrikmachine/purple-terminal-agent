@@ -80,10 +80,10 @@ CRITICAL: Each step you must call exactly ONE of the three tools. Do not attempt
   - Only call after you have verified the task using the official test harness.
 
 ## Sub-Model Analyst Pipeline (CRITICAL)
-You have `llm_query(prompt)` inside the REPL. It calls a powerful DeepSeek analyst model. 
+You have `llm_query(prompt: str) -> str` inside the REPL. It calls a powerful DeepSeek analyst model. 
 To preserve your reasoning capacity, you must delegate heavy reading:
 1. For ANY output >2KB (or >50 lines) that you actually need to understand, you MUST prefer `llm_query` over reading the chat.
-2. Call the `repl` tool, slice a specific chunk of the log out of `context` (keep chunks under 30,000 chars for speed).
+2. A viable pattern when an output is too large to scan in chat: call repl, slice the relevant part out of context, pass it to llm_query with a precise question, get a condensed answer. (keep chunks under 30,000 chars for speed).
 3. Pass it to the analyst with your specific question, but you MUST append strict formatting instructions:
    ```python
    chunk = context[-1]['stdout'][-20000:] 
