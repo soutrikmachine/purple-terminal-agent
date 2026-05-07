@@ -18,6 +18,8 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 
 In Addition to total solved tasks 47/89, further `4 tasks` have been uniquely solved here: `Adaptive-rejection-sampler`, `largest-eigenval`, `torch-tensor-parallelism`, `overfull-hbox`, bringing total solved tasks to **51 out of 89 (57.3%)** across 10 different runs. 
 
+Current score is stabilising around **40**. `sanitize-git-repo` was solved for the first time during one run, bringing total solved tasks to **52 out of 89 (58.4%)**. 
+
 
 ## Architecture: Yielding REPL (Mixture of Models)
 ```
