@@ -63,7 +63,7 @@ def llm_query_sync(prompt: str, max_tokens: int = 4096) -> str:
 async def complete(
     system: str,
     messages: list[dict],
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
     temperature: float = 0.4,
     model_override: str | None = None,
 ) -> str:
@@ -85,7 +85,7 @@ async def complete(
 async def complete_json(
     system: str,
     messages: list[dict],
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
     temperature: float = 0.25,
     model_override: str | None = None,
 ) -> dict:
@@ -143,13 +143,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "repl",
-            "description": "Execute Python in a persistent REPL.",
+            "description": "Execute Python in a persistent REPL. GLOBALS AVAILABLE: `context` (list of outputs), `llm_query(prompt)` (Call a specialized DeepSeek sub-model to analyze strings > 4096 chars).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "thought": {
                         "type": "string",
-                        "description": "Explain what you are trying to extract or analyze from the context."
+                        "description": "Explain what you are trying to extract. If analyzing large logs, state that you will use llm_query()."
                     },
                     "code": {"type": "string"}
                 },
@@ -182,7 +182,7 @@ TOOLS = [
 async def complete_with_tools(
     system: str,
     messages: list[dict],
-    max_tokens: int = 2048,
+    max_tokens: int = 4096,
     temperature: float = 0.2,
     model_override: str | None = None,
 ) -> dict:

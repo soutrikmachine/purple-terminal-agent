@@ -89,6 +89,8 @@ You have three tools: bash, repl, final.
 4. **TRUNCATION RULE**: If you see the marker "...[chars; full in context[-1]]...", 
    do NOT attempt to guess the missing content. Call `repl` immediately. 
    Use `print(context[-1]['stdout'])` to see the full data.
+5. **SUB-MODEL ANALYST**: You have a powerful reasoning model available inside the REPL. If you need to find a specific bug in a massive file or compiler log, you MUST write python code to query it: 
+               `result = llm_query(f"Find the error in this log: {context[-1]['stdout']}"); print(result)`
 """
 
 

@@ -600,10 +600,13 @@ _FULL["ml"] = """
 - Always test with a small input before claiming success
 
 **Training** (`caffe-cifar-10`, `train-fasttext`):
-- Read existing config files COMPLETELY before modifying anything
-- `caffe train --solver=/path/to/solver.prototxt 2>&1 | tee /app/training_output.txt`
-- fastText: `pip install fasttext-wheel` or `pip install fasttext` (not `fasttext-python`)
-- For large training: redirect output to file and tail it — don't run blocking in foreground
+-"FASTTEXT HINT: NEVER run `pip install fasttext` as it forces a C++ source build and will cause a 300s timeout. "
+-"ALWAYS use `pip install --break-system-packages fasttext-wheel` for the pre-built binary. "
+-"Ensure training data is strictly converted to the `__label__<class> <text>` format before training. "
+-"If the task requires quantization via `model.quantize()`, avoid setting `retrain=True` unless explicitly required, as it causes massive execution delays."
+-"CAFFE HINT: DO NOT clone the Caffe repository or attempt to compile it from source (`make all`). "
+-"Instead, install the pre-compiled CPU version instantly using `apt-get update && apt-get install -y caffe-cpu`. "
+-"CRITICAL: Open `solver.prototxt` and change `solver_mode: GPU` to `solver_mode: CPU` using `sed` before running `caffe train`, otherwise the process will hang indefinitely."
 
 **Dataset tasks** (`count-dataset-tokens`, `reshard-c4-data`, `mteb-leaderboard`):
 - HuggingFace datasets: `from datasets import load_dataset; ds = load_dataset("name", split="train")`
@@ -689,10 +692,11 @@ _FULL["scientific"] = """
 - Convert between R and Python: R lists → Python dicts, R vectors → numpy arrays
 
 **DNA/protein assembly** (`dna-assembly`, `dna-insert`, `protein-assembly`):
-- Biopython: `pip install --break-system-packages biopython`
+-"BIOINFORMATICS HINT: For Golden Gate Assembly, primers MUST include the recognition site, a spacer, the 4bp overhang, and the binding sequence (e.g., `NNNN + GGTCTC + N + [4bp overhang] + [binding_seq]`). "
+-"CRITICAL: When calculating Melting Temperature (Tm) using Biopython, ONLY evaluate the `binding_seq` portion. Do NOT include the overhang or enzyme sites in the Tm calculation. "
+-"Use `pip install --break-system-packages biopython` and `from Bio.SeqUtils import MeltingTemp as mt` for accurate biophysics calculations."
 - `from Bio import SeqIO; for record in SeqIO.parse('/app/sequences.fasta', 'fasta'): print(record.id, len(record))`
 - PCR primer design: primers should have Tm ~55-65°C, avoid hairpins, 18-25bp length
-- `from Bio.SeqUtils import MeltingTemp as mt` for melting temperature calculation
 
 ### Reasoning Anchors
 - Does the task require R or Python? (Check for `.R` file path hints or R-specific libraries)
