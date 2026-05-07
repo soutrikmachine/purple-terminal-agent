@@ -354,7 +354,9 @@ async def preflight(
     try:
         user_content = f"""Sub-goal: {subgoal}
 
-Draft command: `{command}`
+Draft command: 
+```bash
+{command}
 
 Recent observations (last 3 turns):
 ```
