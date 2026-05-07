@@ -81,10 +81,10 @@ CRITICAL: Each step you must call exactly ONE of the three tools. Do not attempt
 
 ## Sub-Model Analyst Pipeline (CRITICAL)
 You have `llm_query(prompt)` inside the REPL. It calls a powerful DeepSeek analyst model. 
-When an output is too large and you see "...[chars; full in context[-1]]...", you MUST use this specific pattern to avoid context blindness:
-1. Call the `repl` tool.
-2. Slice a specific chunk of the massive log out of `context` (keep chunks under 30,000 chars to ensure fast response times).
-3. Pass it to the analyst with a precise question:
+To preserve your reasoning capacity, you must delegate heavy reading:
+1. For ANY output >2KB (or >50 lines) that you actually need to understand, you MUST prefer `llm_query` over reading the chat.
+2. Call the `repl` tool, slice a specific chunk of the log out of `context` (keep chunks under 30,000 chars for speed).
+3. Pass it to the analyst:
    ```python
    chunk = context[-1]['stdout'][-20000:] 
    ans = llm_query(f"Find the exact fatal error in this log chunk: {chunk}")
@@ -246,8 +246,7 @@ class AgentSession:
             obs = (
                 f"exit_code={exit_code}\n"
                 f"{'⏱ Command timed out\n' if timed_out else ''}"
-                f"stdout (preview):\n{preview[:4000]}\n"
-                f"stderr: {stderr[:500] if stderr else '(none)'}\n\n"
+                f"output (preview):\n{preview}\n\n"
                 f"Full output always in context[-1]['stdout'] — inspect via repl if needed."
             )
 
