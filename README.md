@@ -13,10 +13,42 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 ---
 ### Test with REPL + SUB-LLM in Progress....
 
+### Best Score: 40/89 (45%) - Planner: DeepSeek-v4-pro + Executor: Gemini-3-flash-preview + Sub-model: DeepSeek-v4-flash
+### Average run cost (1 run = 89 tasks): $9.50
+
+In Addition to total solved tasks 47/89, further `4 tasks` have been uniquely solved here: `Adaptive-rejection-sampler`, `largest-eigenval`, `torch-tensor-parallelism`, `overfull-hbox`, bringing total solved tasks to **51 out of 89 (57.3%)** across 10 different runs. 
+
+
+## Architecture: Yielding REPL (Mixture of Models)
+```
+This agent employs a Heterogeneous Multi-Agent architecture (Mixture of Models) to balance deep strategic reasoning with high-speed, cost-effective execution. It solves the classic A2A "Gateway Timeout" problem through a Yielding REPL heartbeat. We kept ICL specialist injectors, domain specific critic from previous non-REPL runs intact.
+
+### The Model Triad
+1. **The Planner (Brain):** `DeepSeek-V4-Pro`
+   - **Role:** Generates the Turn 1 strategic roadmap. It acts purely in the conceptual domain, analyzing the task, identifying risks, and enforcing test-harness verification.
+2. **The Executor (Hands):** `Gemini-3.0-Flash`
+   - **Role:** The core Orchestrator. Selected for its near-instant Time-To-First-Token (TTFT) and 1M+ token context window. It flawlessly maps the Planner's roadmap into strict JSON tool calls (`bash`, `repl`, `final`) and maintains momentum.
+3. **The Analyst (Sub-Model):** `DeepSeek-V4-Flash`
+   - **Role:** The data cruncher. When the Orchestrator encounters massive log dumps or complex code traces, it writes Python code in the REPL to pass the data to this sub-model via an `llm_query()` function for high-resolution analysis.
+
+### The Yielding REPL Mechanism
+Traditional agents suffer from 504 Gateway Timeouts when executing complex, multi-step internal reasoning loops (like iterating through files in a local sandbox). 
+
+This agent introduces the **Yielding REPL**:
+- When the Executor triggers the `repl` tool, the Python code executes locally inside the container.
+- Instead of immediately querying the LLM again (which stalls the network connection), the agent instantly yields a dummy heartbeat (`echo '[A2A_REPL_YIELD]'`) back to the evaluation gateway.
+- This satisfies the 60-second HTTP connection limit, keeping the Agent-to-Agent (A2A) stream alive indefinitely while the agent processes data internally.
+
+### JSON Chain-of-Thought
+To prevent the rapid Executor (Gemini) from making impulsive decisions without a native `<think>` scratchpad, all JSON tool schemas mandate a `thought` parameter. The model must explicitly write its reasoning state *before* it generates the shell command, enforcing physical filesystem writes and test verifications.
+```
+---
+
 ## Results and Updates
 
 ### Best Score: 30/89 (33.7%) — DeepSeek V4 Flash
 ### Best Score: 31/89 (34.8%) - DeepSeek V4 Pro [Showing need of further architectural refinement]
+### Average Run cost (1 run = 89 tasks): $2.50
 
 Across 8 evaluation runs, the agent has **uniquely solved 45 out of 89 tasks**. With a single evaluation run with DeepSeek-V4-Pro, the agent has uniquely solved **2 more tasks**, bringing total uniquely solved task to **47 out of 89 (52.8%)**. Each architectural generation delivered measurable understanding:
 
@@ -188,7 +220,7 @@ purple-terminal-agent/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENROUTER_API_KEY` | required | OpenRouter API key |
-| `MODEL` | `google/gemini-3-flash-preview` | Model via OpenRouter |
+| `MODEL` | `DeepSeek/DeepSeek-v4-flash` | Model via OpenRouter |
 | `PLANNER_MODEL` | Optional | via OpenRouter |
 | `MAX_TURNS` | `30` | Max ReAct turns per task |
 | `PORT` | `9009` | A2A server port |
