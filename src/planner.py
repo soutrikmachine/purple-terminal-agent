@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "google/gemini-3-flash-preview"))
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
-PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "1"))  # set to 1 to disable
+PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "2"))  # set to 1 to disable
 
 # approved 12s threshold logic
 PLAN_TIMEOUT = 12.0
@@ -73,7 +73,15 @@ FAIL 4 — code-from-image (stuck in install loop):
   Fix: If tesseract not in apt, skip OCR entirely — use PIL to read text from image directly,
   or write the output based on what's visible in the task description.
 
-FAIL 5 — generic-task (ignored test harness):
+FAIL 5 -  caffe-cifar-10 (command timed out):
+  Subgoal: "Build large ML and C++ dependencies from source"
+  What happened: tried to build large dependencies from both caffe and cnn
+  Result: Command timed out after 300 sec
+  Fix: Never build heavy C++ or ML libraries from source if avoidable. Building from source can easily exceeds 300s. 
+  ALWAYS prioritize `apt-get install -y <pkg>` for pre-built binaries or pre-compiled Python wheels. If failed to get pre-built
+  packages in 2 attempts, then fall back to build from source.
+
+FAIL 6 — generic-task (ignored test harness):
   Subgoal: "Implement solution"
   What happened: Agent spent 20 turns guessing the configuration format.
   Result: Failed. A `tests/test.sh` file existed that explained the exact format needed.
@@ -240,7 +248,8 @@ async def plan(
     # Benchmark-critical high-risk keywords
     high_risk_keywords = [
         "build", "compile", "docker", "ml", "caffe", "make", "pmars",
-        "torch", "pytorch", "tensorflow", "security", "nmap", "elf"
+        "torch", "pytorch", "tensorflow", "security", "nmap", "elf",
+        "mjcf", "hash", "ocaml", "cython", "heap", "ssh", "git", "query"
     ]
     is_high_risk = any(kw in (task_text + domains_str).lower() for kw in high_risk_keywords)
     
