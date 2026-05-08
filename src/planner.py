@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "google/gemini-3-flash-preview"))
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
-PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "2"))  # set to 1 to disable
+PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "1"))  # set to 1 to disable
 
 # approved 12s threshold logic
 PLAN_TIMEOUT = 12.0
@@ -74,10 +74,10 @@ FAIL 4 — code-from-image (stuck in install loop):
   or write the output based on what's visible in the task description.
 
 FAIL 5 -  caffe-cifar-10 (command timed out):
-  Subgoal: "Build large ML and C++ dependencies from source"
+  Subgoal: "Install large ML and C++ dependencies"
   What happened: tried to build large dependencies from both caffe and cnn
   Result: Command timed out after 300 sec
-  Fix: Never build heavy C++ or ML libraries from source if avoidable. Building from source can easily exceeds 300s. 
+  Fix: Never build heavy C++ or ML libraries from source if avoidable. Building heavy tools from source can easily exceeds 300s. 
   ALWAYS prioritize `apt-get install -y <pkg>` for pre-built binaries or pre-compiled Python wheels. If failed to get pre-built
   packages in 2 attempts, then fall back to build from source.
 
@@ -338,7 +338,7 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
             system=PLANNER_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
             max_tokens=4096,
-            temperature=0.4,  # slightly higher for Best-of-N diversity
+            temperature=0.25,  # slightly higher for Best-of-N diversity
             model_override=PLANNER_MODEL,
         )
     except Exception as e:

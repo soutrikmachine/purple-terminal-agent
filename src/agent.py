@@ -91,7 +91,6 @@ To preserve your reasoning capacity, you must delegate heavy reading:
    prompt = f"{question}. Reply ONLY with the concise answer. NO Markdown. NO conversational text. Chunk: {chunk}"
    ans = llm_query(prompt)
    print(ans)
-4. ANTI-LOOP RULE: Do not query the sub-model more than twice for the same issue. If the analyst cannot find the answer after 2 attempts, STOP using the repl and try a completely different bash command.
 
 ## Operational Discipline
 1. **NO PHANTOM WRITES**: Finding the answer in the `repl` is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat > file.py`). The evaluator checks the filesystem, not your memory.
