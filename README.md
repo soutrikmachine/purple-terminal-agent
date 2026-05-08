@@ -16,7 +16,7 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 ### Test with REPL + SUB-LLM in Progress....
 
 ### Best Score: 41/89 (46.1%) - Planner: DeepSeek-v4-pro + Executor: Gemini-3-flash-preview + Sub-model: DeepSeek-v4-flash
-### Average run cost (1 run = 89 tasks): $9.20
+### Average run cost (1 run = 89 tasks): $9.00
 
 In Addition to total solved tasks 47/89, further `7 tasks` have been uniquely solved here: `Adaptive-rejection-sampler`, `largest-eigenval`, `torch-tensor-parallelism`, `overfull-hbox`, `sanitize-git-repo`, `llm-inference-batching-scheduler`, `write-compressor`, bringing total solved tasks to **54 out of 89 (60.7%)** across 9 + 3 = 12 different runs. 
 
