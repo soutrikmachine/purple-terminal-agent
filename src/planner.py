@@ -338,7 +338,7 @@ async def _single_plan(user_content: str, task_text: str) -> dict:
             system=PLANNER_SYSTEM,
             messages=[{"role": "user", "content": user_content}],
             max_tokens=4096,
-            temperature=0.25,  # slightly higher for Best-of-N diversity
+            temperature=0.4,  # slightly higher for Best-of-N diversity
             model_override=PLANNER_MODEL,
         )
     except Exception as e:
