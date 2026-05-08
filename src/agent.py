@@ -69,31 +69,25 @@ CRITICAL: Each step you must call exactly ONE of the three tools. Do not attempt
 
 **bash(command, timeout=300)**:
   - DEFAULT TIMEOUT IS 300s. You MUST use 300 for: `apt-get`, `pip install`, `make`, `cmake`, and any training scripts.
-  - Chat previews are strictly limited to 6KB. Full output is saved in `context[-1]['stdout']`.
+  - Standard chat previews are limited to 6KB.
 
 **repl(code)**:
   - GLOBALS: `context` (list of results), `llm_query(prompt)` (DeepSeek Analyst).
-  - USE CASE: Use `repl` for context inspection, slicing, and calling `llm_query`. NEVER run shell commands here.
+  - USE CASE: Use `repl` for lightweight Python scripting, math, or targeted context inspection. NEVER run shell commands here.
   - print() is REQUIRED to see local execution results.
 
 **final(output)**:
   - Only call after you have verified the task using the official test harness.
 
-## Sub-Model Analyst Pipeline (CRITICAL)
-You have `llm_query(prompt: str) -> str` inside the REPL. It calls a powerful DeepSeek analyst model. 
-To preserve your reasoning capacity, you must delegate heavy reading:
-1. For ANY output >2KB (or >50 lines) that you actually need to understand, you MUST prefer `llm_query` over reading the chat.
-2. A viable pattern when an output is too large to scan in chat: call repl, slice the relevant part out of context, pass it to llm_query with a precise question, get a condensed answer. (keep chunks under 30,000 chars for speed).
-3. Pass it to the analyst with your specific question, but you MUST append strict formatting instructions:
-   ```python
-   chunk = context[-1]['stdout'][-20000:] 
-   question = "YOUR SPECIFIC QUESTION HERE (e.g., 'Find the syntax error', 'Extract the p-value')"
-   prompt = f"{question}. Reply ONLY with the concise answer. NO Markdown. NO conversational text. Chunk: {chunk}"
-   ans = llm_query(prompt)
-   print(ans)
+## Auto-Analyst Pipeline (CRITICAL)
+You are the Master Orchestrator. To preserve your context window, the environment will automatically intercept any terminal output larger than 6KB. 
+If a bash command produces a massive output (like a failing test suite or compilation log), the environment will silently forward the tail-end of the log to your DeepSeek Analyst Sub-Model, and return DeepSeek's technical summary to you.
+1. **Trust the Analyst:** DeepSeek's report will identify the exact fatal error, tracebacks, and line numbers. 
+2. **Do NOT Manual Read:** When you see a DeepSeek summary, DO NOT use the `repl` to manually print `context[-1]['stdout']`. Rely on the summary and immediately write the fix.
+3. **Ad-Hoc Queries:** You still have access to `llm_query(prompt)` inside the REPL if you ever need to ask DeepSeek a specific question about a *small* piece of text, but the heavy lifting is now completely automated.
 
 ## Operational Discipline
-1. **NO PHANTOM WRITES**: Finding the answer in the `repl` is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat > file.py`). The evaluator checks the filesystem, not your memory.
+1. **NO PHANTOM WRITES**: Finding the answer is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat << 'EOF' > file.py`). The evaluator checks the filesystem, not your memory.
 2. **MANDATORY VERIFICATION**: Before calling `final`, you must literally run the test script (e.g., `bash tests/test.sh`) to prove your solution works. If you call final without running the test, you will fail.
 3. **THINK FIRST**: You must populate the `thought` field in your JSON before writing the code/command.
 """
@@ -235,21 +229,51 @@ class AgentSession:
                     f"Task:\n{self.instruction}\n\n"
                     f"Environment Recon:\n```\n{recon_snapshot[:3000]}\n```\n\n"
                     f"{plan_summary}\n\n"
-                    "Begin executing the plan. Use bash for shell commands, "
-                    "repl to inspect large outputs or call llm_query, "
-                    "final when complete."
+                    "You are the boss. Write bash commands, "
+                    "If the logs are huge, we will auto-summarize them for you, "
+                    "Use the REPL only for lightweight scripting."
                 ),
             }]
         else:
             combined = stdout + stderr
-            preview = combined[:6000] if len(combined) <= 6000 else (
-                combined[:3000] + f"\n...[{len(combined)-6000} chars; full in context[-1]]\n" + combined[-3000:]
-            )
+            
+            # THE AUTO-DELEGATION INTERCEPT
+            if len(combined) > 6000:
+                logger.info("Log exceeds 6000 chars (%d). Auto-triggering DeepSeek...", len(combined))
+                
+                # Grab the tail end where the errors live (up to ~150k chars)
+                tail_log = combined[-150_000:]
+                
+                analysis_prompt = f"""You are a senior debugging assistant. 
+                        Analyze this massive terminal output and identify the exact fatal error, tracebacks, failing tests, or critical state changes.
+                        Provide a highly technical, concise summary for the Orchestrator LLM so it knows exactly what to fix.
+
+                        RAW OUTPUT (TAIL):
+                        {tail_log}"""
+                
+                try:
+                    # Run the sync network call safely in a thread
+                    deepseek_summary = await asyncio.to_thread(llm_query_sync, analysis_prompt)
+                    
+                    preview = (
+                        f"[SYSTEM WARNING: Command output was massive ({len(combined)} chars). "
+                        f"It was automatically forwarded to the DeepSeek Sub-Model for analysis.]\n\n"
+                        f"=== DEEPSEEK ANALYST REPORT ===\n"
+                        f"{deepseek_summary}\n"
+                        f"==============================="
+                    )
+                except Exception as e:
+                    logger.error("Auto-DeepSeek failed: %s", e)
+                    # Fallback to standard truncation if API fails
+                    preview = combined[:3000] + f"\n...[{len(combined)-6000} chars truncated]\n" + combined[-3000:]
+            else:
+                # Short output, safe for Gemini to read natively
+                preview = combined
+
             obs = (
                 f"exit_code={exit_code}\n"
                 f"{'⏱ Command timed out\n' if timed_out else ''}"
-                f"output (preview):\n{preview}\n\n"
-                f"Full output always in context[-1]['stdout'] — inspect via repl if needed."
+                f"output:\n{preview}\n"
             )
 
             remaining = MAX_TURNS - self.turn

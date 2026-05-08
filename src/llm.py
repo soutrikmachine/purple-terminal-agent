@@ -143,16 +143,17 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "repl",
-            "description": "Execute Python in a persistent in-process REPL. Globals available: `context` (running transcript list of dicts), `llm_query(prompt)` (DeepSeek sub-LLM, ~400K chars). DO NOT run shell commands here — use bash.",
+            "description": "Execute Python in a persistent in-process REPL. Globals available: `context` (running transcript), `llm_query(prompt)` (DeepSeek sub-LLM). DO NOT run shell commands here — use bash.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "thought": {
                         "type": "string",
-                        "description": "Explain what you are trying to extract or analyze. If analyzing massive logs or outputs, state that you will use llm_query()."
+                        "description": "Explain what you are trying to compute, calculate, or targeted-inspect using Python."
                     },
                     "code": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "The Python code to execute."
                     }
                 },
                 "required": ["thought", "code"],
