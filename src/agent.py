@@ -73,11 +73,11 @@ CRITICAL: Each step you must call exactly ONE of the three tools. Do not attempt
 
 **repl(code)**:
   - GLOBALS: `context` (list of results), `llm_query(prompt)` (DeepSeek Analyst).
-  - USE CASE: Use `repl` for lightweight Python scripting, math, or targeted context inspection. NEVER run shell commands here.
+  - USE CASE: Use `repl` for lightweight Python scripting (< 10 lines), string slicing, math, or targeted context inspection. NEVER run shell commands here.
   - print() is REQUIRED to see local execution results.
 
 **final(output)**:
-  - Only call after you have verified the task using the official test harness.
+  - Only call after you have verified the task using the official test harness. Do not call final if tests are failing.
 
 ## Auto-Analyst Pipeline (CRITICAL)
 You are the Master Orchestrator. To preserve your context window, the environment will automatically intercept any terminal output larger than 6KB. 
@@ -90,6 +90,7 @@ If a bash command produces a massive output (like a failing test suite or compil
 1. **NO PHANTOM WRITES**: Finding the answer is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat << 'EOF' > file.py`). The evaluator checks the filesystem, not your memory.
 2. **MANDATORY VERIFICATION**: Before calling `final`, you must literally run the test script (e.g., `bash tests/test.sh`) to prove your solution works. If you call final without running the test, you will fail.
 3. **THINK FIRST**: You must populate the `thought` field in your JSON before writing the code/command.
+4. **ANTI-LAZINESS**: You are strictly forbidden from calling the final tool if your last bash execution of the test suite resulted in an error, exception, or failure. You must persist, investigate the next error, and loop until the test passes cleanly.
 """
 
 
@@ -139,7 +140,8 @@ class AgentSession:
             self.llm_query_count += 1
             if self.llm_query_count > MAX_LLM_QUERY:
                 return "[llm_query budget exhausted]"
-            return llm_query_sync(prompt[:400_000])
+            clamped_prompt = prompt[:400_000] + "\n\nCRITICAL: Answer in under 150 words. Do NOT write code. Provide analysis only."
+            return llm_query_sync(clamped_prompt, max_tokens=300)
 
         self.repl_globals = {
             "context": transcript_ref,
@@ -229,9 +231,10 @@ class AgentSession:
                     f"Task:\n{self.instruction}\n\n"
                     f"Environment Recon:\n```\n{recon_snapshot[:3000]}\n```\n\n"
                     f"{plan_summary}\n\n"
-                    "You are the boss. Write bash commands, "
-                    "If the logs are huge, we will auto-summarize them for you, "
-                    "Use the REPL only for lightweight scripting."
+                    "Begin executing the plan. You are the Orchestrator. "
+                    "Use bash for heavy coding (e.g., using cat << 'EOF' > file.py), shell commands, and file modifications. "
+                    "Use repl ONLY for temporary math, string slicing, or inspecting variables (massive error logs are auto-summarized for you)."
+                    "Use final ONLY after the official test suite passes."
                 ),
             }]
         else:
@@ -245,8 +248,15 @@ class AgentSession:
                 tail_log = combined[-150_000:]
                 
                 analysis_prompt = f"""You are a senior debugging assistant. 
-                        Analyze this massive terminal output and identify the exact fatal error, tracebacks, failing tests, or critical state changes.
-                        Provide a highly technical, concise summary for the Orchestrator LLM so it knows exactly what to fix.
+                        Analyze this massive terminal output and extract the exact failure data for the Orchestrator LLM.
+
+                        You MUST provide your report in this exact structure:
+                        1. FAILING FILE PATH(S): (The exact path to the file throwing the error)
+                        2. EXACT LINE NUMBERS: (The specific lines where the error originates)
+                        3. ERROR MESSAGE: (The exact exception or failure string)
+                        4. ROOT CAUSE SUMMARY: (Brief technical explanation of why it failed)
+
+                        Do not omit file paths or line numbers. The Orchestrator relies on them to write `sed` fixes.
 
                         RAW OUTPUT (TAIL):
                         {tail_log}"""
@@ -335,8 +345,21 @@ class AgentSession:
                 temperature=0.2,
             )
         except Exception as e:
-            logger.error("LLM error: %s", e)
-            return json.dumps({"kind": "final", "output": f"LLM error: {e}"})
+            logger.error("LLM error (likely 0-token safety trip or timeout): %s", e)
+            
+            # THE DEFENSIVE SHIELD: Do not quit! Tell the LLM it failed and force a retry.
+            self.history.append({
+                "role": "user",
+                "content": (
+                    f"[SYSTEM ERROR: The API returned an empty or invalid response. "
+                    f"This usually means you attempted to write text outside of the required tool schema. "
+                    f"Please retry your action, ensuring you call EXACTLY ONE tool (`bash`, `repl`, or `final`).]"
+                )
+            })
+            
+            # Yield a dummy heartbeat to the environment to increment the turn and trigger the LLM again
+            self.last_action_was_repl = True
+            return json.dumps({"kind": "exec_request", "command": "echo '[A2A_LLM_RETRY_YIELD]'", "timeout": 10})
 
         name  = result["name"]
         args  = result["arguments"]
