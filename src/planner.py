@@ -51,35 +51,44 @@ FAIL 1 — build-pmars (API Gateway crash):
   Subgoal: "Install build dependencies"
   What happened: agent ran `apt-get update && apt-get install -y build-essential`
   Result: The terminal generated 5,000 lines of output, crashing the API.
-  Fix: For SYSTEM SETUP/INSTALLS, you MUST output-bound them: `apt-get update > /tmp/out 2>&1 && apt-get install -y build-essential >> /tmp/out 2>&1; tail -n 20 /tmp/out`
+  Fix: You CAN plan long installs (you have 300s), but you MUST output-bound them: `apt-get update > /tmp/out 2>&1 && apt-get install -y build-essential >> /tmp/out 2>&1; tail -n 40 /tmp/out`
 
 FAIL 2 — bn-fit-modify (Progress bar flood):
-  Subgoal: "Set up Python environment"
+  Subgoal: "Set up Python environment and install pandas, pgmpy"
   What happened: agent ran `pip install pandas pgmpy`
   Result: Loading bars flooded the context window.
-  Fix: For PIP INSTALLS, route output to a log: `pip install --break-system-packages X > /tmp/pip.log 2>&1; tail -n 10 /tmp/pip.log`
+  Fix: Always plan to route pip output to a log: `pip install --break-system-packages X > /tmp/pip.log 2>&1; tail -n 10 /tmp/pip.log`
 
 FAIL 3 — chess-best-move (A2A total timeout ~18 minutes):
   Subgoal: "Analyse chess board image"
-  What happened: agent spent 25+ turns iterating pixel-colour-counting scripts
-  Fix: Write ONE complete analysis script upfront. If pixel analysis is uncertain, use stockfish.
+  What happened: agent spent 25+ turns iterating pixel-colour-counting scripts, never converging
+  Result: Green's A2A client timed out the entire task
+  Fix: Write ONE complete analysis script upfront. If pixel analysis is uncertain, use stockfish or
+  python-chess FEN parsing instead of raw image pixel iteration.
 
 FAIL 4 — code-from-image (stuck in install loop):
-  Fix: If tesseract not in apt, skip OCR entirely — use PIL to read text from image directly.
+  Subgoal: "Install OCR libraries"
+  What happened: tried tesseract (unavailable), then easyocr (too large, timeout risk),
+  kept cycling through alternatives for 12 turns
+  Fix: If tesseract not in apt, skip OCR entirely — use PIL to read text from image directly,
+  or write the output based on what's visible in the task description.
 
-FAIL 5 - caffe-cifar-10 (command timed out):
-  Fix: Never build heavy C++ or ML libraries from source if avoidable. ALWAYS prioritize `apt-get install -y <pkg>`.
-
-FAIL 6 — generic-task (ignored test harness):
-  Fix: Always locate and READ the `tests/` directory in Subgoal 1 or 2.
+FAIL 5 — generic-task (ignored test harness):
+  Subgoal: "Implement solution"
+  What happened: Agent spent 20 turns guessing the configuration format.
+  Result: Failed. A `tests/test.sh` file existed that explained the exact format needed.
+  Fix: Always locate and READ the `tests/` directory (especially `test.sh` or `test_outputs.py`) in Subgoal 1 or 2.
 
 ## ✅ Patterns That SUCCEED
 
-SUCCESS 1: Single complete script, not iterative loops
-  Write the full solution script in one `cat > /app/solution.py << 'EOF'` command, then run it.
+SUCCESS 1: Check before install
+  `python3 -c "import X; print('OK')" 2>/dev/null || pip install --break-system-packages X 2>&1 | tail -3`
 
-SUCCESS 2: Letting the Auto-Analyst Handle Test Failures
-  When running compilers (`make`) or test suites (`pytest`), DO NOT use `tail`. Let the command run normally (e.g., `bash tests/test.sh`). If it generates massive error logs, the environment's Auto-Analyst sub-model will automatically intercept and summarize the tracebacks for you.
+SUCCESS 2: Single complete script, not iterative pixel loops
+  Write the full solution script in one cat > /app/solution.py << 'EOF' command, then run it.
+
+SUCCESS 3: 4 subgoals max, final subgoal is always explicit verification
+  [1] Explore (1-2 turns) → [2] Implement (4-6 turns) → [3] Test (2 turns) → [4] Verify (1-2 turns)
 """
 
 
@@ -143,17 +152,20 @@ Your job: produce a structured JSON plan that breaks the task into ORDERED sub-g
 - Order matters: earlier sub-goals must not depend on later ones[cite: 4].
 - Final sub-goal MUST be the execution of the official benchmark test harness (`tests/test.sh`)[cite: 3, 4].
 - Do NOT include specific commands in the plan — that is the executor's job.
+- Risks should be specific to THIS task (e.g., "GPU memory limit," "Missing C++ headers")[cite: 4].
+- Total turns must be realistic: reserve 5 turns for the final verification/debugging phase[cite: 4].
 - You have a 300-second budget per command. You ARE allowed to plan `apt-get update`, heavy compilation, or large ML package installs.
-- For INSTALLATIONS, you MUST bound the output using the Head-Tail log pattern to prevent API crashes.
-- For TEST SUITES and COMPILATION, do NOT bound the output. The environment features an Auto-Analyst sub-model that will automatically intercept and summarize massive error logs.
-- If a subgoal needs a Python package: plan "check then install with --break-system-packages".
+- However, you MUST bound the output of these long tasks using the Head-Tail log pattern to prevent API crashes.
+- If a subgoal needs a Python package: plan "check then install with --break-system-packages"[cite: 2, 4].
+- If specialized tasks (Security/ML/Data) are detected, plan for diagnostic tool checks (e.g., ldd, nvidia-smi) in the first 2 turns[cite: 1].
+- If image analysis is needed: plan "write ONE complete script", not iterative pixel loops.
 
 ## Rule for Smaller Executors
 Every subgoal you create must be MECHANICAL. 
 Instead of "Fix the bug," plan: 
-1. "Run the test suite" 
-2. "Read the Auto-Analyst's error summary" 
-3. "Apply a sed/cat fix" 
+1. "Read the error log" 
+2. "Identify the line number" 
+3. "Apply a sed fix" 
 4. "Re-run the test."
 """
 
@@ -228,8 +240,7 @@ async def plan(
     # Benchmark-critical high-risk keywords
     high_risk_keywords = [
         "build", "compile", "docker", "ml", "caffe", "make", "pmars",
-        "torch", "pytorch", "tensorflow", "security", "nmap", "elf",
-        "mjcf", "hash", "ocaml", "cython", "heap", "ssh", "git", "query"
+        "torch", "pytorch", "tensorflow", "security", "nmap", "elf"
     ]
     is_high_risk = any(kw in (task_text + domains_str).lower() for kw in high_risk_keywords)
     
