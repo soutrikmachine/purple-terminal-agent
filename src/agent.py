@@ -81,12 +81,12 @@ CRITICAL: Each step you must call exactly ONE of the three tools. Do not attempt
 
 ## Sub-Model Analyst Pipeline (CRITICAL)
 You have `llm_query(prompt: str) -> str` inside the REPL. It calls a powerful DeepSeek analyst model. 
-**MANDATORY RULE**: After any bash command that produces a build log, compilation output,
-or test failure (>100 lines), you MUST call repl with llm_query to analyze it:
-    result = llm_query(f"Find exact failing file and line: {context[-1]['stdout'][-50000:]}")
-    print(result)
-DO NOT try to read large outputs manually. Always use llm_query for outputs >100 lines.
-**ANTI-LOOP RULE**: Do not query the sub-model more than twice for the same issue while solving a single task. If the analyst cannot find the answer after 2 attempts, STOP using the repl and try a completely different bash command.
+1. **MANDATORY RULE**: After any bash command that produces a build log, compilation output, or test failure (>100 lines), you MUST call repl with llm_query to analyze it:
+   ```python
+   result = llm_query(f"Find exact failing file and line: {context[-1]['stdout'][-50000:]}")
+   print(result)
+2. DO NOT try to read large outputs manually. Always use llm_query for outputs >100 lines.
+3. **ANTI-LOOP RULE**: Do not query the sub-model more than twice for the same issue while solving a single task. If the analyst cannot find the answer after 2 attempts, STOP using the repl and try a completely different bash command.
 
 ## Operational Discipline
 1. **NO PHANTOM WRITES**: Finding the answer in the `repl` is not enough. You MUST use the `bash` tool to write the final changes to the physical files (e.g., using `sed`, `awk`, or `cat > file.py`). The evaluator checks the filesystem, not your memory.

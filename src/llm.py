@@ -185,8 +185,8 @@ TOOLS = [
 async def complete_with_tools(
     system: str,
     messages: list[dict],
-    max_tokens: int = 3072,
-    temperature: float = 0.2,
+    max_tokens: int = 4096,
+    temperature: float = 0.25,
     model_override: str | None = None,
 ) -> dict:
     """Tool-use completion for the REPL executor loop."""
