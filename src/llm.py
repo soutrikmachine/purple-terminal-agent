@@ -19,7 +19,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 logger = logging.getLogger(__name__)
 
 # The Orchestrator (Lightning fast, immaculate JSON, massive context)
-MODEL     = os.environ.get("MODEL", "google/gemini-3-flash-preview") 
+MODEL     = os.environ.get("MODEL", "google/gemini-3.1-pro-preview") 
 # The Heavy Lifter (Used inside the REPL)
 SUB_MODEL = os.environ.get("SUB_MODEL", "deepseek/deepseek-v4-flash")
 
@@ -143,17 +143,16 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "repl",
-            "description": "Execute Python in a persistent in-process REPL. Globals available: `context` (running transcript), `llm_query(prompt)` (DeepSeek sub-LLM). DO NOT run shell commands here — use bash.",
+            "description": "Execute Python in a persistent in-process REPL. Globals available: `context` (running transcript list of dicts), `llm_query(prompt)` (DeepSeek sub-LLM, ~400K chars). DO NOT run shell commands here — use bash.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "thought": {
                         "type": "string",
-                        "description": "Explain what you are trying to compute, calculate, or targeted-inspect using Python."
+                        "description": "Explain what you are trying to extract or analyze. If analyzing massive logs or outputs, state that you will use llm_query()."
                     },
                     "code": {
-                        "type": "string",
-                        "description": "The Python code to execute."
+                        "type": "string"
                     }
                 },
                 "required": ["thought", "code"],
@@ -185,8 +184,8 @@ TOOLS = [
 async def complete_with_tools(
     system: str,
     messages: list[dict],
-    max_tokens: int = 4096,
-    temperature: float = 0.25,
+    max_tokens: int = 3072, #changed from 2048 to accommodate Gemini-3.1-pro
+    temperature: float = 0.2,
     model_override: str | None = None,
 ) -> dict:
     """Tool-use completion for the REPL executor loop."""

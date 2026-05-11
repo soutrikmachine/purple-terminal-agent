@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 # ── Model routing ─────────────────────────────────────────────────────────────
 # Set PLANNER_MODEL=deepseek/deepseek-r1 to use R1 for planning only.
-# Falls back to the global MODEL env var (google/gemini-3-flash-preview) if not set.
-PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "google/gemini-3-flash-preview"))
+# Falls back to the global MODEL env var (google/gemini-3.1-pro-preview) if not set.
+PLANNER_MODEL = os.getenv("PLANNER_MODEL", os.getenv("MODEL", "google/gemini-3.1-pro-preview"))
 
 # ── Best-of-N config ──────────────────────────────────────────────────────────
 PLAN_BEST_OF_N = int(os.getenv("PLAN_BEST_OF_N", "1"))  # set to 1 to disable
