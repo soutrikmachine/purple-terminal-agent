@@ -185,7 +185,7 @@ TOOLS = [
 async def complete_with_tools(
     system: str,
     messages: list[dict],
-    max_tokens: int = 2048,
+    max_tokens: int = 3072,
     temperature: float = 0.2,
     model_override: str | None = None,
 ) -> dict:
