@@ -20,6 +20,12 @@ evaluated against [Terminal Bench 2.0](https://agentbeats.dev/agentbeater/termin
 
 In Addition to total solved tasks 47/89, further `7 tasks` have been uniquely solved here: `Adaptive-rejection-sampler`, `largest-eigenval`, `torch-tensor-parallelism`, `overfull-hbox`, `sanitize-git-repo`, `llm-inference-batching-scheduler`, `write-compressor`, bringing total solved tasks to **54 out of 89 (60.7%)** across 9 + 3 = 12 different runs. 
 
+**An Interesting Finding:** Though the purpose of our project is to build resource constrained terminal bench agent and evaluate it's capabilities against the heavy SOTA models (heavy == >$30/run), we tested our pipeline with **Gemini-3.1-pro-flash** and the result we obtained is telling an interesting story:
+
+**Capability of Gemini-3.1-Pro models.** We were able to solve 3 unique tasks that resource constrained light models were unable to solve, even in 12 different runs. Showing in depth reasoning efficacy of Gemini-3.1-pro models. Total Solved tasks with Gemini-3.1-Pro run stands at **57 out of 89 (64.04%)**. But it's very costly and consumed a hefty sum of credit, $39.0.
+
+**Stable Architecture is All you Need.** Despite the success of Gemini-3.1-pro models our initial analysis suggest that our current agent architecture still has some flaws which needs a fix to reach complete stability. Though we gained but we also dropped some other problems that were solved by many of those 12 runs. Therefore we have inconclusive evidence on scalability of our model on which we'll work in future.
+
 
 
 ## Architecture: Yielding REPL (Mixture of Models)

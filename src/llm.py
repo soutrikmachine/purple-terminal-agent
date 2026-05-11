@@ -19,7 +19,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 logger = logging.getLogger(__name__)
 
 # The Orchestrator (Lightning fast, immaculate JSON, massive context)
-MODEL     = os.environ.get("MODEL", "google/gemini-3.1-pro-preview") 
+MODEL     = os.environ.get("MODEL", "google/gemini-3-flash-preview") 
 # The Heavy Lifter (Used inside the REPL)
 SUB_MODEL = os.environ.get("SUB_MODEL", "deepseek/deepseek-v4-flash")
 
